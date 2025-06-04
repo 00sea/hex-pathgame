@@ -1,0 +1,32 @@
+{
+  "name": "pathgame",
+  "version": "1.0.0",
+  "description": "Multiplayer hex grid strategy game",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run server:dev\" \"npm run client:dev\"",
+    "server:dev": "cd server && npm run dev",
+    "client:dev": "cd client && npm start",
+    "build": "cd client && npm run build",
+    "server:build": "cd server && npm run build",
+    "install:all": "npm install && cd client && npm install && cd ../server && npm install",
+    "clean": "rm -rf client/node_modules server/node_modules node_modules",
+    "test:local": "echo 'Starting local network test servers...' && npm run dev",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/00sea/hex-pathgame.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/00sea/hex-pathgame/issues"
+  },
+  "homepage": "https://github.com/00sea/hex-pathgame#readme",
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
