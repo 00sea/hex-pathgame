@@ -4,7 +4,7 @@ import { Server } from 'socket.io';
 import cors from 'cors';
 import { networkInterfaces } from 'os';
 import { GameManager } from './GameManager';
-import { SocketEvents } from './types/game';
+import { SocketEvents } from '../../shared/types/socket';
 
 const app = express();
 const server = createServer(app);
@@ -17,7 +17,7 @@ const io = new Server(server, {
   }
 });
 
-const PORT = process.env.PORT || 3001;
+const PORT = parseInt(process.env.PORT || '3001', 10);  // Always number
 const gameManager = new GameManager();
 
 // Middleware
@@ -165,10 +165,14 @@ server.listen(PORT, '0.0.0.0', () => {
 });
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully');
-  server.close(() => {
-    console.log('Server closed');
-    process.exit(0);
-  });
-});
+const shutdown = () => {
+    console.log('Shutdown signal received, shutting down gracefully');
+    server.close(() => {
+      console.log('Server closed');
+      process.exit(0);
+    });
+  };
+  
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown); // <--- add this
+  
