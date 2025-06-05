@@ -29,8 +29,9 @@ export const useSocket = (config: ConnectionConfig = {}) => {
     // Priority: 1. Passed config, 2. Environment variable, 3. Auto-detect, 4. Default
     if (config.serverUrl) return config.serverUrl;
     
-    if (process.env.REACT_APP_SERVER_URL) {
-      return process.env.REACT_APP_SERVER_URL;
+    // Vite uses import.meta.env instead of process.env for client-side
+    if (import.meta.env.VITE_SERVER_URL) {
+      return import.meta.env.VITE_SERVER_URL;
     }
     
     // For local development, try to detect the current host

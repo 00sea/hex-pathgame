@@ -165,10 +165,14 @@ server.listen(PORT, '0.0.0.0', () => {
 });
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully');
-  server.close(() => {
-    console.log('Server closed');
-    process.exit(0);
-  });
-});
+const shutdown = () => {
+    console.log('Shutdown signal received, shutting down gracefully');
+    server.close(() => {
+      console.log('Server closed');
+      process.exit(0);
+    });
+  };
+  
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown); // <--- add this
+  
