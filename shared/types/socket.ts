@@ -7,6 +7,10 @@ export interface SocketEvents {
   'make-move': { gameId: string; move: Move };
   'list-games': void;
   
+  // Test events for multiplayer testing (temporary)
+  'set-player-name': { playerName: string };
+  'test-message': { id: string; playerName: string; message: string; timestamp: number };
+  
   // Server to client events
   'game-joined': { gameState: GameState; playerId: string };
   'game-created': { gameId: string; gameState: GameState; playerId: string };
@@ -15,6 +19,9 @@ export interface SocketEvents {
   'game-ended': { winner: string; reason: string };
   'games-list': { games: GameInfo[] };
   'error': { message: string };
+  
+  // Test events for multiplayer testing (temporary)
+  'players-updated': string[];
 }
 
 export type GameInfo = {

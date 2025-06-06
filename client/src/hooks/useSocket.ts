@@ -29,17 +29,24 @@ export const useSocket = (config: ConnectionConfig = {}) => {
     // Priority: 1. Passed config, 2. Environment variable, 3. Auto-detect, 4. Default
     if (config.serverUrl) return config.serverUrl;
     
-    // Vite uses import.meta.env instead of process.env for client-side
+    // Vite uses VITE_ prefix for environment variables
     if (import.meta.env.VITE_SERVER_URL) {
       return import.meta.env.VITE_SERVER_URL;
     }
     
     // For local development, try to detect the current host
     const currentHost = window.location.hostname;
+    console.log('🔍 Auto-detecting server URL. Current host:', currentHost);
+    
     if (currentHost !== 'localhost' && currentHost !== '127.0.0.1') {
-      return `http://${currentHost}:3001`;
+      const serverUrl = `http://${currentHost}:3001`;
+      console.log('🌐 Using network server URL:', serverUrl);
+      return serverUrl;
     }
     
+    // If accessing via localhost, try to find the actual network server
+    console.log('🏠 Accessing via localhost, defaulting to localhost:3001');
+    console.log('💡 Tip: For network testing, visit http://YOUR_IP:3000 instead');
     return 'http://localhost:3001';
   }, [config.serverUrl]);
 
