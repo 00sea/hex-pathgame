@@ -4,7 +4,7 @@ import { Server } from 'socket.io';
 import cors from 'cors';
 import { networkInterfaces } from 'os';
 import { GameManager } from './GameManager';
-import { SocketEvents } from '../../shared/types/socket';
+import { SocketEvents } from '../../shared/types';
 
 const app = express();
 const server = createServer(app);
@@ -19,6 +19,9 @@ const io = new Server(server, {
 
 const PORT = parseInt(process.env.PORT || '3001', 10);  // Always number
 const gameManager = new GameManager();
+
+// Track connected players for testing
+const connectedPlayers = new Map<string, string>(); // socketId -> playerName
 
 // Middleware
 app.use(cors());
@@ -59,6 +62,24 @@ app.get('/network-info', (req, res) => {
 // Socket.io connection handling
 io.on('connection', (socket) => {
   console.log(`Player connected: ${socket.id}`);
+  
+  // Set player name
+  socket.on('set-player-name', (data: { playerName: string }) => {
+    const playerName = data.playerName;
+    connectedPlayers.set(socket.id, playerName);
+    console.log(`Player named: ${playerName} (${socket.id})`);
+    
+    // Broadcast updated player list
+    broadcastPlayerList();
+  });
+  
+  // Handle test messages
+  socket.on('test-message', (message: any) => {
+    const playerName = connectedPlayers.get(socket.id) || 'Unknown';
+    console.log(`Message from ${playerName}: ${message.message}`);
+    // Broadcast to all connected clients
+    io.emit('test-message', message);
+  });
   
   // Create game
   socket.on('create-game', (data: SocketEvents['create-game']) => {
@@ -126,9 +147,22 @@ io.on('connection', (socket) => {
   
   // Handle disconnection
   socket.on('disconnect', () => {
-    console.log(`Player disconnected: ${socket.id}`);
+    const playerName = connectedPlayers.get(socket.id) || 'Unknown';
+    console.log(`Player disconnected: ${socket.id} (${playerName})`);
+    
+    // Remove from connected players
+    connectedPlayers.delete(socket.id);
     gameManager.handlePlayerDisconnect(socket.id);
+    
+    // Broadcast updated player list
+    broadcastPlayerList();
   });
+  
+  // Helper function to broadcast current player list
+  function broadcastPlayerList() {
+    const playerNames = Array.from(connectedPlayers.values());
+    io.emit('players-updated', playerNames);
+  }
 });
 
 // Function to get local IP address for easy reference
@@ -166,13 +200,12 @@ server.listen(PORT, '0.0.0.0', () => {
 
 // Graceful shutdown
 const shutdown = () => {
-    console.log('Shutdown signal received, shutting down gracefully');
-    server.close(() => {
-      console.log('Server closed');
-      process.exit(0);
-    });
-  };
-  
-  process.on('SIGTERM', shutdown);
-  process.on('SIGINT', shutdown); // <--- add this
-  
+  console.log('Shutdown signal received, shutting down gracefully');
+  server.close(() => {
+    console.log('Server closed');
+    process.exit(0);
+  });
+};
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
