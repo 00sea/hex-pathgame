@@ -1,98 +1,43 @@
-import React, { useRef, useEffect, useState } from 'react';
-import { type HexCoordinate, type Player, type Edge, type GameState } from '../../../shared/types';
+import React, { useRef, useEffect } from 'react';
 
-// Props for the HexGrid component
+// Import all types and utilities from our shared source of truth
+// This ensures consistency across the entire application
+import { 
+  type HexCoordinate, 
+  type Player, 
+  type Edge, 
+  type GameState, 
+  HexMath
+} from '../../../shared/types';
+
+// Props interface for the HexGrid component
+// This defines the contract for how the component should be used
 interface HexGridProps {
-  gameState: GameState;
-  onHexClick?: (coord: HexCoordinate) => void;
-  hoveredHex?: HexCoordinate | null;
-  highlightValidMoves?: boolean;
-  className?: string;
+  gameState: GameState;                    // The current game state to display
+  onHexClick?: (coord: HexCoordinate) => void;  // Optional click handler for interaction
+  hoveredHex?: HexCoordinate | null;       // Which hex is currently being hovered over
+  highlightValidMoves?: boolean;           // Whether to visually highlight valid moves
+  className?: string;                      // Additional CSS classes for styling
 }
 
-// Hex math utilities
-class HexMath {
-  static coordToKey(coord: HexCoordinate): string {
-    return `${coord.q},${coord.r}`;
-  }
-
-  static keyToCoord(key: string): HexCoordinate {
-    const [q, r] = key.split(',').map(Number);
-    return { q, r };
-  }
-
-  static getNeighbors(coord: HexCoordinate): HexCoordinate[] {
-    const directions = [
-      { q: 1, r: 0 }, { q: 1, r: -1 }, { q: 0, r: -1 },
-      { q: -1, r: 0 }, { q: -1, r: 1 }, { q: 0, r: 1 }
-    ];
-    
-    return directions.map(dir => ({
-      q: coord.q + dir.q,
-      r: coord.r + dir.r
-    }));
-  }
-
-  static isInRadius(coord: HexCoordinate, radius: number): boolean {
-    return Math.abs(coord.q) <= radius && 
-           Math.abs(coord.r) <= radius && 
-           Math.abs(coord.q + coord.r) <= radius;
-  }
-
-  static generateGrid(radius: number): HexCoordinate[] {
-    const coords: HexCoordinate[] = [];
-    
-    for (let q = -radius; q <= radius; q++) {
-      for (let r = -radius; r <= radius; r++) {
-        if (Math.abs(q + r) <= radius) {
-          coords.push({ q, r });
-        }
-      }
-    }
-    
-    return coords;
-  }
-
-  static distance(a: HexCoordinate, b: HexCoordinate): number {
-    return Math.max(
-      Math.abs(a.q - b.q),
-      Math.abs(a.r - b.r),
-      Math.abs((a.q + a.r) - (b.q + b.r))
-    );
-  }
-
-  // Convert hex coordinates to pixel coordinates
-  static hexToPixel(coord: HexCoordinate, size: number): { x: number; y: number } {
-    const x = size * (3/2 * coord.q);
-    const y = size * (Math.sqrt(3)/2 * coord.q + Math.sqrt(3) * coord.r);
-    return { x, y };
-  }
-
-  // Convert pixel coordinates back to hex coordinates (for click detection)
-  static pixelToHex(point: { x: number; y: number }, size: number): HexCoordinate {
-    const q = (2/3 * point.x) / size;
-    const r = (-1/3 * point.x + Math.sqrt(3)/3 * point.y) / size;
-    
-    // Round to nearest hex
-    const s = -q - r;
-    let rq = Math.round(q);
-    let rr = Math.round(r);
-    let rs = Math.round(s);
-    
-    const qDiff = Math.abs(rq - q);
-    const rDiff = Math.abs(rr - r);
-    const sDiff = Math.abs(rs - s);
-    
-    if (qDiff > rDiff && qDiff > sDiff) {
-      rq = -rr - rs;
-    } else if (rDiff > sDiff) {
-      rr = -rq - rs;
-    }
-    
-    return { q: rq, r: rr };
-  }
-}
-
+/**
+ * HexGrid Component - Visual Representation of the Game Board
+ * 
+ * This component is responsible for translating the abstract game state into
+ * a visual representation that players can understand and interact with.
+ * 
+ * Key responsibilities:
+ * - Render the hexagonal grid based on the game state
+ * - Display players in their current positions
+ * - Show which edges exist and which have been removed
+ * - Highlight valid moves when requested
+ * - Handle mouse interactions for gameplay
+ * 
+ * Design principles:
+ * - Uses shared types to ensure consistency with game logic
+ * - Separates visual concerns from game logic
+ * - Provides clear feedback about game state through color and visual cues
+ */
 const HexGrid: React.FC<HexGridProps> = ({ 
   gameState, 
   onHexClick, 
@@ -101,34 +46,54 @@ const HexGrid: React.FC<HexGridProps> = ({
   className = "" 
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [canvasSize] = useState({ width: 600, height: 600 });
+  
+  // Canvas configuration - these could be made configurable props in the future
+  const canvasSize = { width: 600, height: 600 };
   const hexSize = 25;
 
-  // Get valid moves for current player if highlighting is enabled
+  /**
+   * Calculate valid moves for the current player
+   * This demonstrates how game logic can be implemented consistently
+   * by using shared utilities and types
+   */
   const getValidMoves = (): HexCoordinate[] => {
-    if (!highlightValidMoves || gameState.phase !== 'playing') return [];
+    if (!highlightValidMoves || gameState.phase !== 'playing') {
+      return [];
+    }
     
     const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+    if (!currentPlayer) return [];
+    
+    // Use shared HexMath utility to get neighboring coordinates
     const neighbors = HexMath.getNeighbors(currentPlayer.position);
     
+    // Filter neighbors to only include valid moves
     return neighbors.filter(neighbor => {
-      if (!HexMath.isInRadius(neighbor, gameState.grid.radius)) return false;
+      // Check if the neighbor is within the game board
+      if (!HexMath.isInRadius(neighbor, gameState.grid.radius)) {
+        return false;
+      }
       
-      const edgeKey = getEdgeKey(currentPlayer.position, neighbor);
+      // Check if there's a traversable edge to this neighbor
+      const edgeKey = HexMath.getEdgeKey(currentPlayer.position, neighbor);
       const edge = gameState.grid.edges.get(edgeKey);
       
+      // Edge must exist and not be removed
       return edge && !edge.removed;
     });
   };
 
-  // Helper to create consistent edge keys
-  const getEdgeKey = (from: HexCoordinate, to: HexCoordinate): string => {
-    const fromKey = HexMath.coordToKey(from);
-    const toKey = HexMath.coordToKey(to);
-    return fromKey < toKey ? `${fromKey}-${toKey}` : `${toKey}-${fromKey}`;
-  };
-
-  // Draw the hex grid
+  /**
+   * Main rendering effect
+   * This is where we translate game state into visual representation
+   * 
+   * The rendering process follows a specific order to ensure proper layering:
+   * 1. Clear the canvas
+   * 2. Draw edges (so they appear behind hexagons)
+   * 3. Draw hexagonal cells with appropriate highlighting
+   * 4. Draw coordinate labels for debugging/reference
+   * 5. Draw players on top of everything else
+   */
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -136,16 +101,18 @@ const HexGrid: React.FC<HexGridProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     
-    // Clear canvas
+    // Clear the entire canvas to start fresh
     ctx.clearRect(0, 0, canvasSize.width, canvasSize.height);
     
-    // Center the grid
+    // Set up coordinate system with origin at canvas center
+    // This makes hex coordinate math much simpler
     ctx.save();
     ctx.translate(canvasSize.width / 2, canvasSize.height / 2);
     
     const validMoves = getValidMoves();
     
-    // Draw edges first (so they appear behind hexagons)
+    // Phase 1: Draw all edges
+    // We iterate through the edge map from the game state
     gameState.grid.edges.forEach((edge) => {
       const fromPixel = HexMath.hexToPixel(edge.from, hexSize);
       const toPixel = HexMath.hexToPixel(edge.to, hexSize);
@@ -154,33 +121,36 @@ const HexGrid: React.FC<HexGridProps> = ({
       ctx.moveTo(fromPixel.x, fromPixel.y);
       ctx.lineTo(toPixel.x, toPixel.y);
       
+      // Visual styling based on edge state
       if (edge.removed) {
+        // Removed edges are shown as red dashed lines
         ctx.strokeStyle = '#fca5a5';
         ctx.lineWidth = 2;
-        ctx.setLineDash([5, 5]);
+        ctx.setLineDash([5, 5]);  // Creates dashed line effect
       } else {
+        // Active edges are solid gray lines
         ctx.strokeStyle = '#6b7280';
         ctx.lineWidth = 3;
-        ctx.setLineDash([]);
+        ctx.setLineDash([]);      // Solid line
       }
       
       ctx.stroke();
     });
     
-    // Draw hexagons
+    // Phase 2: Draw hexagonal cells
+    // We generate all coordinates for the grid radius and draw each hex
     for (const coord of HexMath.generateGrid(gameState.grid.radius)) {
       const pixel = HexMath.hexToPixel(coord, hexSize);
       
-      // Check if this hex should be highlighted
-      const isHovered = hoveredHex && 
-        hoveredHex.q === coord.q && hoveredHex.r === coord.r;
-      const isValidMove = validMoves.some(move => 
-        move.q === coord.q && move.r === coord.r);
+      // Determine highlighting state for this hex
+      const isHovered = hoveredHex && HexMath.equals(hoveredHex, coord);
+      const isValidMove = validMoves.some(move => HexMath.equals(move, coord));
       
-      // Draw hexagon
+      // Draw the hexagonal shape
+      // We create a path with 6 vertices arranged in a regular hexagon
       ctx.beginPath();
       for (let i = 0; i < 6; i++) {
-        const angle = Math.PI / 3 * i;
+        const angle = Math.PI / 3 * i;  // 60 degrees per vertex
         const x = pixel.x + hexSize * 0.85 * Math.cos(angle);
         const y = pixel.y + hexSize * 0.85 * Math.sin(angle);
         
@@ -192,102 +162,118 @@ const HexGrid: React.FC<HexGridProps> = ({
       }
       ctx.closePath();
       
-      // Fill hex based on state
+      // Apply visual styling based on hex state
       if (isValidMove) {
-        ctx.fillStyle = '#dbeafe'; // Light blue for valid moves
+        ctx.fillStyle = '#dbeafe'; // Light blue indicates this is a valid move
       } else if (isHovered) {
-        ctx.fillStyle = '#f3f4f6'; // Light gray for hover
+        ctx.fillStyle = '#f3f4f6'; // Light gray for hover feedback
       } else {
-        ctx.fillStyle = '#ffffff'; // White default
+        ctx.fillStyle = '#ffffff'; // Default white background
       }
       ctx.fill();
       
-      // Stroke hex
+      // Draw hex border with appropriate emphasis
       if (isValidMove) {
-        ctx.strokeStyle = '#3b82f6';
+        ctx.strokeStyle = '#3b82f6';  // Blue border for valid moves
         ctx.lineWidth = 2;
       } else {
-        ctx.strokeStyle = '#d1d5db';
+        ctx.strokeStyle = '#d1d5db';  // Gray border for normal hexes
         ctx.lineWidth = 1;
       }
       ctx.stroke();
       
-      // Draw coordinate labels (small)
+      // Phase 3: Draw coordinate labels
+      // These help with debugging and understanding the coordinate system
       ctx.fillStyle = '#9ca3af';
       ctx.font = '8px Arial';
       ctx.textAlign = 'center';
       ctx.fillText(`${coord.q},${coord.r}`, pixel.x, pixel.y + 2);
     }
     
-    // Draw players
+    // Phase 4: Draw players
+    // Players are drawn on top of everything else so they're always visible
     gameState.players.forEach((player, index) => {
       if (!player) return; // Handle case where second player hasn't joined yet
       
       const pixel = HexMath.hexToPixel(player.position, hexSize);
       const isCurrentPlayer = index === gameState.currentPlayerIndex;
       
-      // Draw player circle
+      // Draw player circle with size indicating whose turn it is
       ctx.beginPath();
       ctx.arc(pixel.x, pixel.y, isCurrentPlayer ? 18 : 15, 0, 2 * Math.PI);
       ctx.fillStyle = player.color;
       ctx.fill();
       
-      // Add glow effect for current player
+      // Add visual emphasis for the current player
       if (isCurrentPlayer && gameState.phase === 'playing') {
+        // Glowing effect to show whose turn it is
         ctx.strokeStyle = player.color;
         ctx.lineWidth = 3;
         ctx.shadowColor = player.color;
         ctx.shadowBlur = 10;
         ctx.stroke();
-        ctx.shadowBlur = 0;
+        ctx.shadowBlur = 0;  // Reset shadow for other drawing
       } else {
+        // Standard white border for inactive player
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 2;
         ctx.stroke();
       }
       
-      // Player number
+      // Draw player number for identification
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 10px Arial';
       ctx.textAlign = 'center';
       ctx.fillText((index + 1).toString(), pixel.x, pixel.y + 3);
     });
     
+    // Restore the canvas coordinate system
     ctx.restore();
-  }, [gameState, hoveredHex, highlightValidMoves, hexSize, canvasSize]);
+  }, [gameState, hoveredHex, highlightValidMoves]);
 
-  // Handle mouse movement for hover effects
+  /**
+   * Handle mouse movement for hover effects
+   * This provides immediate visual feedback as the user moves their mouse
+   */
   const handleMouseMove = (event: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!onHexClick) return; // Only track hover if clicking is enabled
+    if (!onHexClick) return; // Only provide hover feedback if clicking is enabled
     
     const canvas = canvasRef.current;
     if (!canvas) return;
     
+    // Convert mouse coordinates to canvas coordinates
     const rect = canvas.getBoundingClientRect();
     const x = event.clientX - rect.left - canvasSize.width / 2;
     const y = event.clientY - rect.top - canvasSize.height / 2;
     
+    // Use shared utility to convert pixel coordinates to hex coordinates
     const hexCoord = HexMath.pixelToHex({ x, y }, hexSize);
     
+    // Check if the calculated coordinate is within the game board
     if (HexMath.isInRadius(hexCoord, gameState.grid.radius)) {
-      // This would need to be lifted up to parent component state
-      // For now, we'll just pass the coord to a callback if provided
+      // In a full implementation, this would update hover state
+      // For now, we just validate that the coordinate is correct
     }
   };
 
-  // Handle clicks
+  /**
+   * Handle clicks on the hex grid
+   * This translates mouse clicks into game coordinates for move processing
+   */
   const handleClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
     if (!onHexClick) return;
     
     const canvas = canvasRef.current;
     if (!canvas) return;
     
+    // Convert click coordinates using the same logic as mouse movement
     const rect = canvas.getBoundingClientRect();
     const x = event.clientX - rect.left - canvasSize.width / 2;
     const y = event.clientY - rect.top - canvasSize.height / 2;
     
     const hexCoord = HexMath.pixelToHex({ x, y }, hexSize);
     
+    // Only process clicks within the valid game area
     if (HexMath.isInRadius(hexCoord, gameState.grid.radius)) {
       onHexClick(hexCoord);
     }
