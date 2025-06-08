@@ -1,5 +1,6 @@
   // client/src/types/ui.ts - Client-only UI types
-  import { type GameState, type HexCoordinate, type Move, type Player } from '../../../shared/types';
+  import type { GameState, Move, Player } from '../../../shared/types';
+  import type { HexCoordinate } from '../../../shared/utils/hexMath';
   
   export interface UIState {
     selectedAction: 'move' | 'cut';

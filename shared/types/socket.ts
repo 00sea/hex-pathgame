@@ -1,4 +1,5 @@
 import { GameState, Move } from "./game";
+import { GameInfo } from "./game";
 
 export interface SocketEvents {
   // Client to server events
@@ -24,9 +25,9 @@ export interface SocketEvents {
   'players-updated': string[];
 }
 
-export type GameInfo = {
-  id: string;
-  playerCount: number;
-  phase: GameState['phase'];
-  createdAt: Date;
-};
+// export type GameInfo = {
+//   id: string;
+//   playerCount: number;
+//   phase: GameState['phase'];
+//   createdAt: Date;
+// };
