@@ -86,7 +86,7 @@ io.on('connection', (socket) => {
     try {
       const { gameId, gameState } = gameManager.createGame(
         data.playerName, 
-        data.gridRadius || 3
+        data.config  // Already a GameConfig object - no conversion needed!
       );
       
       socket.join(gameId);
