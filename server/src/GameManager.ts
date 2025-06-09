@@ -1,40 +1,89 @@
+// server/src/GameManager.ts
+// Multiplayer game session management for vertex-based triangular lattice game
+// This handles server-side coordination while using shared game logic for rules
+
 import { v4 as uuidv4 } from 'uuid';
-import { GameState, Player, Move, GameInfo } from '../../shared/types';
-import { GameRoom, PlayerConnection } from './types/internal';
-import { Socket } from 'socket.io';
+import { 
+  GameState, 
+  Player, 
+  Move, 
+  GameInfo, 
+  GameConfig, 
+  ValidMoves,
+  VertexGameLogic 
+} from '../../shared/types';
 
+/**
+ * Server-side game session management
+ * 
+ * This class handles the multiplayer aspects of the game while delegating
+ * all actual game logic to the shared VertexGameLogic class. It manages:
+ * - Multiple concurrent game sessions
+ * - Player connections and game room membership
+ * - Move validation and state updates
+ * - Broadcasting updates to connected clients
+ */
 export class GameManager {
-  private games = new Map<string, GameRoom>();
-  private playerConnections = new Map<string, PlayerConnection>();
+  private games = new Map<string, {
+    gameState: GameState;
+    sockets: Map<string, any>; // Socket instances for players in this game
+    createdAt: Date;
+    lastActivity: Date;
+  }>();
 
-  // Create a new game
-  createGame(playerName: string, gridRadius: number = 3): { gameId: string; gameState: GameState } {
+  private playerConnections = new Map<string, {
+    socketId: string;
+    playerName: string;
+    gameId?: string;
+    connectedAt: Date;
+  }>();
+
+  /**
+   * Create a new game session
+   * 
+   * Uses the shared VertexGameLogic to create the initial game state,
+   * then sets up server-side tracking for multiplayer coordination.
+   */
+  createGame(
+    playerName: string, 
+    config: GameConfig = { gridRadius: 3 }
+  ): { gameId: string; gameState: GameState } {
     const gameId = uuidv4();
     const playerId = uuidv4();
     
-    // Create initial game state
-    const gameState = this.createInitialGameState(gameId, {
+    // Create player object for the game creator
+    const player1 = {
       id: playerId,
       name: playerName,
       color: '#3b82f6' // Blue for player 1
-    }, gridRadius);
+    };
     
-    // Create game room
-    const gameRoom: GameRoom = {
-      id: gameId,
+    // Use shared game logic to create the initial game state
+    // Note: This creates a game in 'playing' phase but with only one player
+    // We'll need to modify this once the second player joins
+    const gameState = VertexGameLogic.createGame(gameId, player1, player1, config);
+    
+    // Override the game state to 'waiting' since we only have one player
+    gameState.phase = 'waiting';
+    gameState.players = [gameState.players[0], null as any]; // Second player slot empty
+    
+    // Set up server-side game tracking
+    this.games.set(gameId, {
       gameState,
       sockets: new Map(),
       createdAt: new Date(),
       lastActivity: new Date()
-    };
-    
-    this.games.set(gameId, gameRoom);
+    });
     
     console.log(`Game created: ${gameId} by ${playerName}`);
     return { gameId, gameState };
   }
 
-  // Join an existing game
+  /**
+   * Add a second player to an existing game
+   * 
+   * This completes the game setup and transitions to 'playing' phase.
+   */
   joinGame(gameId: string, playerName: string, socketId: string): GameState {
     const gameRoom = this.games.get(gameId);
     
@@ -43,31 +92,44 @@ export class GameManager {
     }
     
     if (gameRoom.gameState.phase !== 'waiting') {
-      throw new Error('Game already in progress');
+      throw new Error('Game is not accepting new players');
     }
     
-    if (gameRoom.gameState.players.length >= 2) {
-      throw new Error('Game is full');
+    if (gameRoom.gameState.players[1] !== null) {
+      throw new Error('Game is already full');
     }
     
-    // Add second player
-    const playerId = uuidv4();
-    gameRoom.gameState.players[1] = {
-      id: playerId,
+    // Create the second player
+    const player2: Player = {
+      id: uuidv4(),
       name: playerName,
-      position: { q: 0, r: 0 }, // Start at center like player 1
+      position: { u: 0, v: 0 }, // Start at center like player 1
       color: '#ef4444' // Red for player 2
     };
     
-    // Start the game
+    // Update the game state with the second player
+    gameRoom.gameState.players[1] = player2;
     gameRoom.gameState.phase = 'playing';
     gameRoom.lastActivity = new Date();
+    
+    // Track this player's connection
+    this.playerConnections.set(socketId, {
+      socketId,
+      playerName,
+      gameId,
+      connectedAt: new Date()
+    });
     
     console.log(`${playerName} joined game: ${gameId}`);
     return gameRoom.gameState;
   }
 
-  // Make a move in a game
+  /**
+   * Process a move from a player
+   * 
+   * This validates the move using shared game logic, applies it if valid,
+   * and returns the updated game state for broadcasting to all players.
+   */
   makeMove(gameId: string, move: Move, socketId: string): GameState {
     const gameRoom = this.games.get(gameId);
     
@@ -79,269 +141,198 @@ export class GameManager {
       throw new Error('Game is not in progress');
     }
     
-    // Validate move
-    if (!this.isValidMove(gameRoom.gameState, move)) {
+    // Validate the move using shared game logic
+    if (!VertexGameLogic.isValidMove(gameRoom.gameState, move)) {
       throw new Error('Invalid move');
     }
     
-    // Apply move
-    gameRoom.gameState = this.applyMove(gameRoom.gameState, move);
+    // Apply the move using shared game logic
+    const newGameState = VertexGameLogic.applyMove(gameRoom.gameState, move);
+    
+    // Update our server-side tracking
+    gameRoom.gameState = newGameState;
     gameRoom.lastActivity = new Date();
     
-    return gameRoom.gameState;
+    console.log(`Move applied in game ${gameId}: ${move.type} by ${move.player}`);
+    
+    // Check if game ended
+    if (newGameState.phase === 'finished') {
+      console.log(`Game ${gameId} ended. Winner: ${newGameState.winner}`);
+    }
+    
+    return newGameState;
   }
 
-  // Get list of available games
+  /**
+   * Get valid moves for the current player in a game
+   * 
+   * This uses shared game logic to compute what moves are available.
+   */
+  getValidMoves(gameId: string): ValidMoves | null {
+    const gameRoom = this.games.get(gameId);
+    
+    if (!gameRoom || gameRoom.gameState.phase !== 'playing') {
+      return null;
+    }
+    
+    const currentPlayer = gameRoom.gameState.players[gameRoom.gameState.currentPlayerIndex];
+    if (!currentPlayer) {
+      return null;
+    }
+    
+    return VertexGameLogic.getValidMoves(gameRoom.gameState, currentPlayer);
+  }
+
+  /**
+   * Get a list of available games for the lobby
+   * 
+   * Returns summary information about games that players can view or join.
+   */
   getAvailableGames(): GameInfo[] {
     const games: GameInfo[] = [];
     
-    for (const gameRoom of this.games.values()) {
+    for (const [gameId, gameRoom] of this.games) {
+      const playerCount = gameRoom.gameState.players.filter(p => p !== null).length;
+      
       games.push({
-        id: gameRoom.id,
-        playerCount: gameRoom.gameState.players.filter(p => p !== null).length,
+        id: gameId,
+        playerCount,
         phase: gameRoom.gameState.phase,
-        createdAt: gameRoom.createdAt
+        createdAt: gameRoom.createdAt,
+        lastActivity: gameRoom.lastActivity,
+        networkSize: {
+          radius: gameRoom.gameState.network.radius,
+          vertexCount: gameRoom.gameState.network.vertices.size,
+          edgeCount: gameRoom.gameState.network.edges.size
+        }
       });
     }
     
     return games;
   }
 
-  // Handle player disconnect
-  handlePlayerDisconnect(socketId: string): void {
-    const connection = this.playerConnections.get(socketId);
-    
-    if (connection && connection.gameId) {
-      const gameRoom = this.games.get(connection.gameId);
-      if (gameRoom) {
-        gameRoom.sockets.delete(socketId);
-        console.log(`Player ${connection.playerName} disconnected from game ${connection.gameId}`);
-        
-        // Could implement reconnection logic here
-        // For now, just log the disconnect
-      }
-    }
-    
-    this.playerConnections.delete(socketId);
-  }
-
-  // Get active game count
-  getActiveGameCount(): number {
-    return this.games.size;
-  }
-
-  // Add socket to game room
-  addSocketToGame(gameId: string, socket: Socket): void {
+  /**
+   * Add a socket to a game room for real-time communication
+   * 
+   * This enables the server to broadcast updates to all players in the game.
+   */
+  addSocketToGame(gameId: string, socket: any): void {
     const gameRoom = this.games.get(gameId);
     if (gameRoom) {
       gameRoom.sockets.set(socket.id, socket);
     }
   }
 
-  // Private helper methods
-  private createInitialGameState(gameId: string, player1: Omit<Player, 'position'>, radius: number): GameState {
-    const center = { q: 0, r: 0 };
+  /**
+   * Remove a socket from a game room
+   * 
+   * This cleans up when a player disconnects or leaves a game.
+   */
+  removeSocketFromGame(gameId: string, socketId: string): void {
+    const gameRoom = this.games.get(gameId);
+    if (gameRoom) {
+      gameRoom.sockets.delete(socketId);
+    }
+  }
+
+  /**
+   * Handle player disconnection
+   * 
+   * This cleans up server-side state when a player disconnects.
+   * In a production game, you might want to pause the game or allow reconnection.
+   */
+  handlePlayerDisconnect(socketId: string): void {
+    const connection = this.playerConnections.get(socketId);
     
-    // Generate grid vertices and edges
-    const vertices = new Set(this.generateGrid(radius).map(coord => this.coordToKey(coord)));
-    const edges = new Map();
-    
-    // Create edges between adjacent vertices
-    for (const coord of this.generateGrid(radius)) {
-      const neighbors = this.getNeighbors(coord).filter(neighbor =>
-        this.isInRadius(neighbor, radius)
-      );
+    if (connection && connection.gameId) {
+      console.log(`Player ${connection.playerName} disconnected from game ${connection.gameId}`);
       
-      for (const neighbor of neighbors) {
-        const edgeKey = this.getEdgeKey(coord, neighbor);
-        
-        if (!edges.has(edgeKey)) {
-          edges.set(edgeKey, {
-            from: coord,
-            to: neighbor,
-            removed: false
-          });
-        }
+      // Remove socket from game room
+      this.removeSocketFromGame(connection.gameId, socketId);
+      
+      // In a more sophisticated implementation, you might:
+      // - Pause the game temporarily
+      // - Allow reconnection within a time window
+      // - Notify the other player about the disconnection
+      // - End the game if disconnection is permanent
+    }
+    
+    this.playerConnections.delete(socketId);
+  }
+
+  /**
+   * Get game state by ID
+   * 
+   * Utility method for retrieving current game state.
+   */
+  getGameState(gameId: string): GameState | null {
+    const gameRoom = this.games.get(gameId);
+    return gameRoom ? gameRoom.gameState : null;
+  }
+
+  /**
+   * Get basic server statistics
+   * 
+   * Useful for monitoring and debugging.
+   */
+  getServerStats(): {
+    activeGames: number;
+    playingGames: number;
+    waitingGames: number;
+    connectedPlayers: number;
+  } {
+    const activeGames = this.games.size;
+    let playingGames = 0;
+    let waitingGames = 0;
+    
+    for (const gameRoom of this.games.values()) {
+      if (gameRoom.gameState.phase === 'playing') {
+        playingGames++;
+      } else if (gameRoom.gameState.phase === 'waiting') {
+        waitingGames++;
       }
     }
     
     return {
-      id: gameId,
-      players: [
-        { ...player1, position: center },
-        null as any // Will be filled when second player joins
-      ],
-      currentPlayerIndex: 0,
-      grid: { radius, vertices, edges },
-      phase: 'waiting',
-      moveHistory: []
+      activeGames,
+      playingGames,
+      waitingGames,
+      connectedPlayers: this.playerConnections.size
     };
   }
 
-  private isValidMove(gameState: GameState, move: Move): boolean {
-    const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+  /**
+   * Clean up old games
+   * 
+   * Remove finished games or games that have been inactive for too long.
+   * This prevents memory leaks in long-running servers.
+   */
+  cleanupOldGames(maxAgeMinutes: number = 60): void {
+    const cutoffTime = new Date(Date.now() - maxAgeMinutes * 60 * 1000);
     
-    if (move.player !== currentPlayer.id) {
-      return false;
-    }
-    
-    if (move.type === 'move') {
-      if (!move.to) return false;
-      
-      const neighbors = this.getNeighbors(currentPlayer.position);
-      const isAdjacent = neighbors.some(n => 
-        n.q === move.to!.q && n.r === move.to!.r
-      );
-      
-      if (!isAdjacent) return false;
-      
-      // Check if edge exists and isn't removed
-      const edgeKey = this.getEdgeKey(currentPlayer.position, move.to);
-      const edge = gameState.grid.edges.get(edgeKey);
-      
-      return edge !== undefined && !edge.removed;
-    }
-    
-    if (move.type === 'cut') {
-      if (!move.edgeCut) return false;
-      
-      const { from, to } = move.edgeCut;
-      const playerPos = currentPlayer.position;
-      
-      const isAdjacentToFrom = this.distance(playerPos, from) === 1;
-      const isAdjacentToTo = this.distance(playerPos, to) === 1;
-      
-      if (!isAdjacentToFrom && !isAdjacentToTo) return false;
-      
-      // Check if edge exists and isn't already removed
-      const edgeKey = this.getEdgeKey(from, to);
-      const edge = gameState.grid.edges.get(edgeKey);
-      
-      return edge !== undefined && !edge.removed;
-    }
-    
-    return false;
-  }
-
-  private applyMove(gameState: GameState, move: Move): GameState {
-    const newState = JSON.parse(JSON.stringify(gameState)) as GameState;
-    const currentPlayer = newState.players[newState.currentPlayerIndex];
-    
-    if (move.type === 'move' && move.to) {
-      // Remove the edge that was traversed
-      const edgeKey = this.getEdgeKey(currentPlayer.position, move.to);
-      const edge = newState.grid.edges.get(edgeKey);
-      if (edge) {
-        edge.removed = true;
-      }
-      
-      // Update player position
-      currentPlayer.position = move.to;
-    }
-    
-    if (move.type === 'cut' && move.edgeCut) {
-      // Remove the specified edge
-      const edgeKey = this.getEdgeKey(move.edgeCut.from, move.edgeCut.to);
-      const edge = newState.grid.edges.get(edgeKey);
-      if (edge) {
-        edge.removed = true;
-      }
-    }
-    
-    // Add move to history
-    newState.moveHistory.push(move);
-    
-    // Switch to next player
-    newState.currentPlayerIndex = 1 - newState.currentPlayerIndex;
-    
-    // Check for game end conditions
-    const winner = this.checkWinner(newState);
-    if (winner) {
-      newState.phase = 'finished';
-      newState.winner = winner;
-    }
-    
-    return newState;
-  }
-
-  private checkWinner(gameState: GameState): string | null {
-    // Check if any player is isolated (has no valid moves)
-    for (const player of gameState.players) {
-      if (this.isPlayerIsolated(gameState, player)) {
-        // Return the OTHER player as winner
-        return gameState.players.find(p => p.id !== player.id)?.id || null;
-      }
-    }
-    
-    return null;
-  }
-
-  private isPlayerIsolated(gameState: GameState, player: Player): boolean {
-    const neighbors = this.getNeighbors(player.position);
-    
-    // Check if any adjacent edge is still available
-    for (const neighbor of neighbors) {
-      const edgeKey = this.getEdgeKey(player.position, neighbor);
-      const edge = gameState.grid.edges.get(edgeKey);
-      
-      if (edge && !edge.removed) {
-        return false; // Found at least one valid move
-      }
-    }
-    
-    return true; // No valid moves found
-  }
-
-  // Hex grid utility methods
-  private coordToKey(coord: { q: number; r: number }): string {
-    return `${coord.q},${coord.r}`;
-  }
-
-  private getNeighbors(coord: { q: number; r: number }): { q: number; r: number }[] {
-    const directions = [
-      { q: 1, r: 0 }, { q: 1, r: -1 }, { q: 0, r: -1 },
-      { q: -1, r: 0 }, { q: -1, r: 1 }, { q: 0, r: 1 }
-    ];
-    
-    return directions.map(dir => ({
-      q: coord.q + dir.q,
-      r: coord.r + dir.r
-    }));
-  }
-
-  private isInRadius(coord: { q: number; r: number }, radius: number): boolean {
-    return Math.abs(coord.q) <= radius && 
-           Math.abs(coord.r) <= radius && 
-           Math.abs(coord.q + coord.r) <= radius;
-  }
-
-  private generateGrid(radius: number): { q: number; r: number }[] {
-    const coords: { q: number; r: number }[] = [];
-    
-    for (let q = -radius; q <= radius; q++) {
-      for (let r = -radius; r <= radius; r++) {
-        if (Math.abs(q + r) <= radius) {
-          coords.push({ q, r });
+    for (const [gameId, gameRoom] of this.games) {
+      const shouldCleanup = 
+        gameRoom.gameState.phase === 'finished' || 
+        gameRoom.lastActivity < cutoffTime;
+        
+      if (shouldCleanup) {
+        console.log(`Cleaning up old game: ${gameId}`);
+        this.games.delete(gameId);
+        
+        // Clean up any player connections associated with this game
+        for (const [socketId, connection] of this.playerConnections) {
+          if (connection.gameId === gameId) {
+            this.playerConnections.delete(socketId);
+          }
         }
       }
     }
-    
-    return coords;
   }
 
-  private distance(a: { q: number; r: number }, b: { q: number; r: number }): number {
-    return Math.max(
-      Math.abs(a.q - b.q),
-      Math.abs(a.r - b.r),
-      Math.abs((a.q + a.r) - (b.q + b.r))
-    );
-  }
-
-  private getEdgeKey(from: { q: number; r: number }, to: { q: number; r: number }): string {
-    const fromKey = this.coordToKey(from);
-    const toKey = this.coordToKey(to);
-    
-    // Ensure consistent ordering for edge keys
-    return fromKey < toKey ? `${fromKey}-${toKey}` : `${toKey}-${fromKey}`;
+  /**
+   * Get the active game count for server monitoring
+   */
+  getActiveGameCount(): number {
+    return this.games.size;
   }
 }

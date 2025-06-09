@@ -6,5 +6,8 @@
 export * from './game';
 export * from './socket';
 
-// Re-export hex math utilities and types
-export * from '../utils/hexMath';
+// Re-export triangular lattice coordinate system and utilities
+export * from '../utils/triangularLattice';
+
+// Re-export core game logic
+export * from '../utils/gameLogic';

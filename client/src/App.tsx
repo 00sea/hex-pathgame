@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useSocket } from './hooks/useSocket';
 import { NetworkConnectionTester } from './components/NetworkConnectionTester';
-import HexGridDemo from './components/HexGridDemo';
+// TODO: Import VertexGrid component when it's created
+// import VertexGridDemo from './components/VertexGridDemo';
+import VertexGridDemo from './components/VertexGridDemo';
 
 interface TestMessage {
   id: string;
@@ -10,10 +12,10 @@ interface TestMessage {
   timestamp: number;
 }
 
-type AppMode = 'multiplayer-test' | 'hex-demo';
+type AppMode = 'multiplayer-test' | 'vertex-demo';
 
 function App() {
-  const [mode, setMode] = useState<AppMode>('hex-demo');
+  const [mode, setMode] = useState<AppMode>('multiplayer-test'); // Default to multiplayer test for now
   const [playerName, setPlayerName] = useState('');
   const [isNameSet, setIsNameSet] = useState(false);
   const [testMessages, setTestMessages] = useState<TestMessage[]>([]);
@@ -70,6 +72,15 @@ function App() {
     }
   };
 
+  const handleCreateGame = () => {
+    if (socket && playerName) {
+      socket.emit('create-game', {
+        playerName,
+        config: { gridRadius: 3 } // Using new GameConfig format
+      });
+    }
+  };
+
   const getStatusColor = () => {
     if (isConnected) return 'bg-green-500';
     if (isConnecting) return 'bg-yellow-500';
@@ -88,17 +99,19 @@ function App() {
       <nav className="bg-white shadow-sm border-b">
         <div className="max-w-4xl mx-auto px-4 py-3">
           <div className="flex justify-between items-center">
-            <h1 className="text-xl font-bold text-gray-800">Hex Grid Game</h1>
+            <h1 className="text-xl font-bold text-gray-800">Vertex Strategy Game</h1>
             <div className="flex gap-2">
               <button
-                onClick={() => setMode('hex-demo')}
+                onClick={() => setMode('vertex-demo')}
+                disabled={false} // Disable until we build the component
                 className={`px-4 py-2 rounded text-sm font-medium ${
-                  mode === 'hex-demo' 
+                  mode === 'vertex-demo' 
                     ? 'bg-blue-500 text-white' 
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                 }`}
+                title="Coming soon - vertex game visualization"
               >
-                Game Demo
+                Game Demo (Coming Soon)
               </button>
               <button
                 onClick={() => setMode('multiplayer-test')}
@@ -116,9 +129,11 @@ function App() {
       </nav>
 
       {/* Content based on mode */}
-      {mode === 'hex-demo' ? (
-        <HexGridDemo />
+      {mode === 'vertex-demo' ? (
+        // Placeholder for future vertex game demo
+        <VertexGridDemo />
       ) : (
+        // Multiplayer test functionality
         <div className="p-4">
           <div className="max-w-4xl mx-auto">
             <header className="text-center mb-8">
@@ -208,6 +223,20 @@ function App() {
                   </div>
                 </div>
 
+                {/* Game Creation Test */}
+                <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+                  <h3 className="text-xl font-semibold mb-4">Test Game Creation</h3>
+                  <p className="text-gray-600 mb-4">
+                    Test the new vertex-based game creation (server will log the result)
+                  </p>
+                  <button
+                    onClick={handleCreateGame}
+                    className="px-6 py-2 bg-purple-500 text-white rounded hover:bg-purple-600"
+                  >
+                    Create Vertex Game
+                  </button>
+                </div>
+
                 {/* Message Test */}
                 <div className="bg-white rounded-lg shadow-md p-6 mb-6">
                   <h3 className="text-xl font-semibold mb-4">Test Real-time Messaging</h3>
@@ -274,9 +303,9 @@ function App() {
                     <li>• Open this same URL on another device: <code className="bg-blue-100 px-1 rounded">http://192.168.1.72:3000</code></li>
                     <li>• Set different player names on each device</li>
                     <li>• Send messages back and forth to test real-time communication</li>
-                    <li>• You should see other players appear in the "Connected Players" section</li>
-                    <li>• Messages should appear instantly on all connected devices</li>
-                    <li>• Switch to "Game Demo" tab to see the hex grid visualization!</li>
+                    <li>• Try the "Create Vertex Game" button to test new game creation</li>
+                    <li>• Check the server console for game creation logs</li>
+                    <li>• Once vertex visualization is ready, switch to Game Demo!</li>
                   </ul>
                 </div>
               </>
