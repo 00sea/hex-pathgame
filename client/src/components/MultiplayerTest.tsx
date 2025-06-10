@@ -92,7 +92,7 @@ export const MultiplayerTest: React.FC = () => {
       <div className="max-w-4xl mx-auto">
         <header className="text-center mb-8">
           <h2 className="text-3xl font-bold text-gray-800 mb-2">
-            🧪 Multiplayer Connection Test
+            Multiplayer Connection Test
           </h2>
           <p className="text-gray-600">Test real-time communication between devices</p>
         </header>
@@ -115,7 +115,7 @@ export const MultiplayerTest: React.FC = () => {
 
           {isConnected && (
             <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">
-              ✅ Successfully connected to game server!
+              Successfully connected to game server!
             </div>
           )}
         </div>
