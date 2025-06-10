@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useSocket } from '../../hooks/useSocket';
 import { NetworkConnectionTester } from './NetworkConnectionTester';
+import MultiplayerGame from '../MultiplayerGame';
+import type { GameState, Player, Move, ValidMoves } from '../../../../shared/types';
+import { hydrateGameState } from '../../utils/gameStateUtils';
 
 interface TestMessage {
   id: string;
@@ -9,12 +12,22 @@ interface TestMessage {
   timestamp: number;
 }
 
+type MultiplayerTestState = 'lobby' | 'in-game' | 'finished';
+
 export const MultiplayerTest: React.FC = () => {
+  // Connection and player state
   const [playerName, setPlayerName] = useState('');
   const [isNameSet, setIsNameSet] = useState(false);
   const [testMessages, setTestMessages] = useState<TestMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [connectedPlayers, setConnectedPlayers] = useState<string[]>([]);
+
+  // Game state
+  const [currentState, setCurrentState] = useState<MultiplayerTestState>('lobby');
+  const [gameState, setGameState] = useState<GameState | null>(null);
+  const [validMoves, setValidMoves] = useState<ValidMoves | null>(null);
+  const [gameId, setGameId] = useState<string | null>(null);
+  const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
 
   const { socket, isConnected, isConnecting, connectionError } = useSocket();
 
@@ -22,20 +35,71 @@ export const MultiplayerTest: React.FC = () => {
   useEffect(() => {
     if (!socket) return;
 
-    // Listen for test messages from other players
+    // Test/lobby events
     socket.on('test-message', (message: TestMessage) => {
       setTestMessages(prev => [...prev, message]);
     });
 
-    // Listen for player connections/disconnections
     socket.on('players-updated', (players: string[]) => {
       setConnectedPlayers(players);
+    });
+
+    // Game events
+    socket.on('game-created', (data: { gameId: string; gameState: GameState; playerId: string }) => {
+      console.log('Game created:', data);
+      setGameState(hydrateGameState(data.gameState));
+      setGameId(data.gameId);
+      setMyPlayerId(data.playerId);
+      setCurrentState('in-game');
+    });
+
+    socket.on('game-joined', (data: { gameState: GameState; playerId: string; validMoves: ValidMoves }) => {
+      console.log('Game joined:', data);
+      setGameState(hydrateGameState(data.gameState));
+      setMyPlayerId(data.playerId);
+      setValidMoves(data.validMoves);
+      setCurrentState('in-game');
+    });
+
+    socket.on('game-updated', (data: { gameState: GameState; validMoves?: ValidMoves }) => {
+      console.log('Game updated:', data);
+      setGameState(hydrateGameState(data.gameState));
+      if (data.validMoves) {
+        setValidMoves(data.validMoves);
+      }
+      
+      // Check if game ended
+      if (data.gameState.phase === 'finished') {
+        setCurrentState('finished');
+      }
+    });
+
+    socket.on('game-ended', (data: { winner: string; reason: string; finalState: GameState }) => {
+      console.log('Game ended:', data);
+      setGameState(hydrateGameState(data.finalState));
+      setCurrentState('finished');
+    });
+
+    socket.on('error', (data: { message: string }) => {
+      console.error('Game error:', data.message);
+      alert(`Game Error: ${data.message}`);
+    });
+
+    socket.on('move-invalid', (data: { reason: string }) => {
+      console.error('Invalid move:', data.reason);
+      alert(`Invalid move: ${data.reason}`);
     });
 
     // Cleanup
     return () => {
       socket.off('test-message');
       socket.off('players-updated');
+      socket.off('game-created');
+      socket.off('game-joined');
+      socket.off('game-updated');
+      socket.off('game-ended');
+      socket.off('error');
+      socket.off('move-invalid');
     };
   }, [socket]);
 
@@ -70,9 +134,40 @@ export const MultiplayerTest: React.FC = () => {
     if (socket && playerName) {
       socket.emit('create-game', {
         playerName,
-        config: { gridRadius: 3 } // Using new GameConfig format
+        gridRadius: 3
       });
     }
+  };
+
+  const handleMakeMove = (move: Move) => {
+    if (socket && gameId) {
+      socket.emit('make-move', { gameId, move });
+    }
+  };
+
+  const handleLeaveGame = () => {
+    if (socket && gameId) {
+      // You might want to add a 'leave-game' event to your server
+      socket.emit('leave-game', { gameId });
+    }
+    
+    // Reset local game state
+    setCurrentState('lobby');
+    setGameState(null);
+    setValidMoves(null);
+    setGameId(null);
+    setMyPlayerId(null);
+  };
+
+  const getMyPlayer = (): Player | null => {
+    if (!gameState || !myPlayerId) return null;
+    return gameState.players.find(p => p?.id === myPlayerId) || null;
+  };
+
+  const isMyTurn = (): boolean => {
+    if (!gameState || !myPlayerId) return false;
+    const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+    return currentPlayer?.id === myPlayerId;
   };
 
   const getStatusColor = () => {
@@ -87,14 +182,42 @@ export const MultiplayerTest: React.FC = () => {
     return 'Disconnected';
   };
 
+  // If we're in a game, show the game interface
+  if (currentState === 'in-game' || currentState === 'finished') {
+    if (!gameState) {
+      return (
+        <div className="p-8 text-center">
+          <div className="text-gray-600">Loading game...</div>
+        </div>
+      );
+    }
+
+    return (
+      <MultiplayerGame
+        gameState={gameState}
+        validMoves={validMoves ?? undefined}
+        myPlayer={getMyPlayer()}
+        isMyTurn={isMyTurn()}
+        onMove={handleMakeMove}
+        onLeaveGame={handleLeaveGame}
+        connectionStatus={{
+          connected: isConnected,
+          reconnecting: isConnecting,
+          error: connectionError
+        }}
+      />
+    );
+  }
+
+  // Otherwise, show the lobby interface
   return (
     <div className="p-4">
       <div className="max-w-4xl mx-auto">
         <header className="text-center mb-8">
           <h2 className="text-3xl font-bold text-gray-800 mb-2">
-            Multiplayer Connection Test
+            🧪 Multiplayer Connection Test
           </h2>
-          <p className="text-gray-600">Test real-time communication between devices</p>
+          <p className="text-gray-600">Test real-time communication and play games across devices</p>
         </header>
 
         {/* Connection Status */}
@@ -115,7 +238,7 @@ export const MultiplayerTest: React.FC = () => {
 
           {isConnected && (
             <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">
-              Successfully connected to game server!
+              ✅ Successfully connected to game server!
             </div>
           )}
         </div>
@@ -145,13 +268,13 @@ export const MultiplayerTest: React.FC = () => {
                 disabled={!playerName.trim()}
                 className="px-6 py-2 bg-blue-500 text-white rounded disabled:bg-gray-300 hover:bg-blue-600"
               >
-                Join Test
+                Join Lobby
               </button>
             </div>
           </div>
         )}
 
-        {/* Multiplayer Test Area */}
+        {/* Multiplayer Lobby */}
         {isConnected && isNameSet && (
           <>
             {/* Connected Players */}
@@ -177,17 +300,17 @@ export const MultiplayerTest: React.FC = () => {
               </div>
             </div>
 
-            {/* Game Creation Test */}
+            {/* Game Creation */}
             <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-              <h3 className="text-xl font-semibold mb-4">Test Game Creation</h3>
+              <h3 className="text-xl font-semibold mb-4">Start a Game</h3>
               <p className="text-gray-600 mb-4">
-                Test the new vertex-based game creation (server will log the result)
+                Create a new vertex strategy game. Another player can join once you create it.
               </p>
               <button
                 onClick={handleCreateGame}
                 className="px-6 py-2 bg-purple-500 text-white rounded hover:bg-purple-600"
               >
-                Create Vertex Game
+                🎮 Create Vertex Game
               </button>
             </div>
 
@@ -256,10 +379,10 @@ export const MultiplayerTest: React.FC = () => {
               <ul className="text-blue-700 space-y-1 text-sm">
                 <li>• Open this same URL on another device: <code className="bg-blue-100 px-1 rounded">http://192.168.1.72:3000</code></li>
                 <li>• Set different player names on each device</li>
-                <li>• Send messages back and forth to test real-time communication</li>
-                <li>• Try the "Create Vertex Game" button to test new game creation</li>
-                <li>• Check the server console for game creation logs</li>
-                <li>• Once vertex visualization is ready, switch to Game Demo!</li>
+                <li>• One player clicks "Create Vertex Game" to start</li>
+                <li>• The other player will automatically join when they're in the lobby</li>
+                <li>• Play the game in real-time across devices!</li>
+                <li>• Use the messaging area to communicate during testing</li>
               </ul>
             </div>
           </>

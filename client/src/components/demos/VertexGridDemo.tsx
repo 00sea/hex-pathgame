@@ -7,9 +7,9 @@ import {
   type Player,
   type Move 
 } from '../../../../shared/types';
-import InputHandler from '../game/InputHandler';
-import UIControls from '../game/UIControls';
-import CanvasRendering from '../game/CanvasRendering';
+import InputHandler from '../core/InputHandler';
+import UIControls from '../core/UIControls';
+import CanvasRendering from '../core/CanvasRendering';
 
 /**
  * Create a sample vertex-based game state for demonstration
