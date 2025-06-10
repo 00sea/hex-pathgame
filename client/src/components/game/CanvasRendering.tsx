@@ -4,9 +4,9 @@ import {
   type TriangularCoordinate, 
   TriangularLattice, 
   type ValidMoves 
-} from '../../../shared/types';
+} from '../../../../shared/types';
 
-interface TriangularLatticeCanvasProps {
+interface CanvasRenderingProps {
   gameState: GameState;
   validMoves?: ValidMoves;
   hoveredVertex?: TriangularCoordinate | null;
@@ -24,7 +24,7 @@ interface TriangularLatticeCanvasProps {
  * It takes all necessary data as props and draws the triangular lattice,
  * players, edges, and visual feedback without any game logic or state management.
  */
-export const TriangularLatticeCanvas: React.FC<TriangularLatticeCanvasProps> = ({
+export const CanvasRendering: React.FC<CanvasRenderingProps> = ({
   gameState,
   validMoves,
   hoveredVertex = null,
@@ -217,4 +217,4 @@ function drawPlayers(ctx: CanvasRenderingContext2D, gameState: GameState, scale:
   });
 }
 
-export default TriangularLatticeCanvas;
+export default CanvasRendering;
