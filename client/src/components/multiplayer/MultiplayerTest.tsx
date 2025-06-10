@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useSocket } from '../hooks/useSocket';
+import { useSocket } from '../../hooks/useSocket';
 import { NetworkConnectionTester } from './NetworkConnectionTester';
 
 interface TestMessage {
