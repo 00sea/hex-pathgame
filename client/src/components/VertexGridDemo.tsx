@@ -7,7 +7,8 @@ import {
   type Player,
   type Move 
 } from '../../../shared/types';
-import TriangularLatticeCanvas from './TriangularLatticeCanvas';
+import CanvasRendering from './game/CanvasRendering';
+import InputHandler from './game/InputHandler';
 
 /**
  * Create a sample vertex-based game state for demonstration
@@ -54,9 +55,10 @@ const VertexGridDemo: React.FC = () => {
   const [gameState, setGameState] = useState(() => createSampleGameState(3));
   const [gridRadius, setGridRadius] = useState(3);
   const [hoveredVertex, setHoveredVertex] = useState<TriangularCoordinate | null>(null);
+  const [hoveredEdge, setHoveredEdge] = useState<{ from: TriangularCoordinate; to: TriangularCoordinate } | null>(null);
   const [highlightMoves, setHighlightMoves] = useState(true);
   const [selectedAction, setSelectedAction] = useState<'move' | 'cut'>('move');
-  const [showCoordinates, setShowCoordinates] = useState(true);
+  const [showCoordinates, setShowCoordinates] = useState(false);
 
   // Canvas configuration
   const canvasSize = { width: 800, height: 600 };
@@ -73,67 +75,61 @@ const VertexGridDemo: React.FC = () => {
   };
 
   /**
-   * Handle clicks on vertices for movement or edge cutting
+   * Handle vertex clicks for movement
    */
   const handleVertexClick = (coord: TriangularCoordinate) => {
+    if (selectedAction !== 'move') return;
+    
     console.log('Vertex clicked:', coord);
     
     const currentPlayer = gameState.players[gameState.currentPlayerIndex];
     if (!currentPlayer) return;
 
-    if (selectedAction === 'move') {
-      // Try to move to the clicked vertex
-      const move: Move = {
-        type: 'move',
-        player: currentPlayer.id,
-        from: currentPlayer.position,
-        to: coord,
-        timestamp: Date.now()
-      };
+    // Try to move to the clicked vertex
+    const move: Move = {
+      type: 'move',
+      player: currentPlayer.id,
+      from: currentPlayer.position,
+      to: coord,
+      timestamp: Date.now()
+    };
 
-      // Validate and apply the move
-      if (VertexGameLogic.isValidMove(gameState, move)) {
-        const newGameState = VertexGameLogic.applyMove(gameState, move);
-        setGameState(newGameState);
-        console.log(`Player ${currentPlayer.name} moved to (${coord.u},${coord.v})`);
-      } else {
-        console.log('Invalid move to', coord);
-      }
-    }
-    // Note: Cut mode would require clicking on edges, not vertices
-    // We'll implement edge clicking in a future iteration
-  };
-
-  /**
-   * Handle mouse movement for hover effects
-   */
-  const handleMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
-    // For now, we'll need to get the canvas element to do coordinate conversion
-    // This will be moved to GameInputHandler in the next phase
-    const canvasElement = event.currentTarget.querySelector('canvas');
-    if (!canvasElement) return;
-    
-    const rect = canvasElement.getBoundingClientRect();
-    const x = event.clientX - rect.left - canvasSize.width / 2;
-    const y = event.clientY - rect.top - canvasSize.height / 2;
-    
-    // Convert pixel coordinates to triangular coordinates
-    const coord = TriangularLattice.pixelToCoordinate({ x, y }, scale);
-    
-    // Check if the coordinate is within the game board
-    if (TriangularLattice.isInRadius(coord, gameState.network.radius)) {
-      setHoveredVertex(coord);
+    // Validate and apply the move
+    if (VertexGameLogic.isValidMove(gameState, move)) {
+      const newGameState = VertexGameLogic.applyMove(gameState, move);
+      setGameState(newGameState);
+      console.log(`Player ${currentPlayer.name} moved to (${coord.u},${coord.v})`);
     } else {
-      setHoveredVertex(null);
+      console.log('Invalid move to', coord);
     }
   };
 
   /**
-   * Handle canvas clicks
+   * Handle edge clicks for cutting
    */
-  const handleCanvasClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (hoveredVertex) {
-      handleVertexClick(hoveredVertex);
+  const handleEdgeClick = (from: TriangularCoordinate, to: TriangularCoordinate) => {
+    if (selectedAction !== 'cut') return;
+    
+    console.log('Edge clicked:', from, 'to', to);
+    
+    const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+    if (!currentPlayer) return;
+
+    // Try to cut the clicked edge
+    const move: Move = {
+      type: 'cut',
+      player: currentPlayer.id,
+      edgeCut: { from, to },
+      timestamp: Date.now()
+    };
+
+    // Validate and apply the move
+    if (VertexGameLogic.isValidMove(gameState, move)) {
+      const newGameState = VertexGameLogic.applyMove(gameState, move);
+      setGameState(newGameState);
+      console.log(`Player ${currentPlayer.name} cut edge from (${from.u},${from.v}) to (${to.u},${to.v})`);
+    } else {
+      console.log('Invalid cut of edge from', from, 'to', to);
     }
   };
 
@@ -257,12 +253,16 @@ const VertexGridDemo: React.FC = () => {
 
         {/* Game Board */}
         <div className="bg-white rounded-lg shadow-lg p-6 text-center">
-          <div 
-            onMouseMove={handleMouseMove}
-            onClick={handleCanvasClick}
-            className="cursor-pointer"
+          <InputHandler
+            gameState={gameState}
+            canvasSize={canvasSize}
+            scale={scale}
+            onVertexClick={handleVertexClick}
+            onVertexHover={setHoveredVertex}
+            onEdgeClick={handleEdgeClick}
+            onEdgeHover={setHoveredEdge}
           >
-            <TriangularLatticeCanvas
+            <CanvasRendering
               gameState={gameState}
               validMoves={validMoves}
               hoveredVertex={hoveredVertex}
@@ -272,17 +272,25 @@ const VertexGridDemo: React.FC = () => {
               canvasSize={canvasSize}
               scale={scale}
             />
-          </div>
+          </InputHandler>
           
           {/* Instructions */}
           <div className="mt-6 text-sm text-gray-600">
             <p className="mb-2">
-              <strong>How to Play:</strong> Click on a blue-highlighted vertex to move there
+              <strong>How to Play:</strong> 
+              {selectedAction === 'move' 
+                ? ' Click on a blue-highlighted vertex to move there'
+                : ' Click on a red-highlighted edge to cut it'
+              }
             </p>
             <div className="flex justify-center gap-8 text-xs">
               <div className="flex items-center gap-1">
                 <div className="w-3 h-3 bg-blue-200 border border-blue-500 rounded-full"></div>
                 <span>Valid moves</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-1 bg-red-500"></div>
+                <span>Valid cuts</span>
               </div>
               <div className="flex items-center gap-1">
                 <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
