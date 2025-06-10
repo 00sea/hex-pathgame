@@ -1,23 +1,13 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   type GameState, 
   type TriangularCoordinate, 
   TriangularLattice, 
   VertexGameLogic, 
   type Player,
-  type Move,
-  type ValidMoves
+  type Move 
 } from '../../../shared/types';
-
-interface VertexGridDemoProps {
-  standalone?: boolean;
-  // Multiplayer props
-  gameState?: GameState;
-  onMove?: (move: Move) => void;
-  isMyTurn?: boolean;
-  myPlayerId?: string | null;
-  validMoves?: ValidMoves | null;
-}
+import TriangularLatticeCanvas from './TriangularLatticeCanvas';
 
 /**
  * Create a sample vertex-based game state for demonstration
@@ -57,47 +47,25 @@ const createSampleGameState = (radius: number = 3): GameState => {
 /**
  * VertexGridDemo Component - Interactive demonstration of the vertex-based game
  * 
- * This component renders a triangular lattice as a network of vertices and edges,
- * with players positioned on vertices and the ability to move between adjacent vertices.
- * 
- * Works in both standalone mode (for development) and multiplayer mode (networked).
+ * This component manages game state and user interaction for local testing,
+ * while using the pure TriangularLatticeCanvas component for rendering.
  */
-const VertexGridDemo: React.FC<VertexGridDemoProps> = ({
-  standalone = true,
-  gameState: multiplayerGameState,
-  onMove,
-  isMyTurn = false,
-  myPlayerId,
-  validMoves: multiplayerValidMoves
-}) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  
-  // Standalone mode state
-  const [localGameState, setLocalGameState] = useState(() => createSampleGameState(3));
+const VertexGridDemo: React.FC = () => {
+  const [gameState, setGameState] = useState(() => createSampleGameState(3));
   const [gridRadius, setGridRadius] = useState(3);
-  
-  // Shared UI state
   const [hoveredVertex, setHoveredVertex] = useState<TriangularCoordinate | null>(null);
   const [highlightMoves, setHighlightMoves] = useState(true);
   const [selectedAction, setSelectedAction] = useState<'move' | 'cut'>('move');
+  const [showCoordinates, setShowCoordinates] = useState(true);
 
   // Canvas configuration
   const canvasSize = { width: 800, height: 600 };
-  const scale = 30; // Scale factor for coordinate-to-pixel conversion
-
-  // Use multiplayer game state if provided, otherwise use local state
-  const gameState = standalone ? localGameState : (multiplayerGameState || localGameState);
+  const scale = 30;
 
   /**
    * Get valid moves for the current player using shared game logic
    */
-  const getValidMoves = (): ValidMoves => {
-    // In multiplayer mode, use the valid moves provided by the server
-    if (!standalone && multiplayerValidMoves) {
-      return multiplayerValidMoves;
-    }
-    
-    // In standalone mode, compute valid moves locally
+  const getValidMoves = () => {
     if (gameState.phase !== 'playing') return { moves: [], cuts: [] };
     
     const currentPlayer = gameState.players[gameState.currentPlayerIndex];
@@ -105,41 +73,12 @@ const VertexGridDemo: React.FC<VertexGridDemoProps> = ({
   };
 
   /**
-   * Get the current player (the one whose turn it is)
-   */
-  const getCurrentPlayer = (): Player | null => {
-    if (gameState.phase !== 'playing') return null;
-    return gameState.players[gameState.currentPlayerIndex];
-  };
-
-  /**
-   * Get my player in multiplayer mode
-   */
-  const getMyPlayer = (): Player | null => {
-    if (standalone || !myPlayerId) return null;
-    return gameState.players.find(p => p?.id === myPlayerId) || null;
-  };
-
-  /**
-   * Check if the current player can make moves (standalone or multiplayer)
-   */
-  const canMakeMove = (): boolean => {
-    if (standalone) {
-      return gameState.phase === 'playing';
-    } else {
-      return isMyTurn && gameState.phase === 'playing';
-    }
-  };
-
-  /**
    * Handle clicks on vertices for movement or edge cutting
    */
   const handleVertexClick = (coord: TriangularCoordinate) => {
-    if (!canMakeMove()) return;
-    
     console.log('Vertex clicked:', coord);
     
-    const currentPlayer = getCurrentPlayer();
+    const currentPlayer = gameState.players[gameState.currentPlayerIndex];
     if (!currentPlayer) return;
 
     if (selectedAction === 'move') {
@@ -152,18 +91,11 @@ const VertexGridDemo: React.FC<VertexGridDemoProps> = ({
         timestamp: Date.now()
       };
 
-      // Validate the move
+      // Validate and apply the move
       if (VertexGameLogic.isValidMove(gameState, move)) {
-        if (standalone) {
-          // Apply move locally in standalone mode
-          const newGameState = VertexGameLogic.applyMove(gameState, move);
-          setLocalGameState(newGameState);
-          console.log(`Player ${currentPlayer.name} moved to (${coord.u},${coord.v})`);
-        } else {
-          // Send move to server in multiplayer mode
-          onMove && onMove(move);
-          console.log(`Sending move to server: ${currentPlayer.name} to (${coord.u},${coord.v})`);
-        }
+        const newGameState = VertexGameLogic.applyMove(gameState, move);
+        setGameState(newGameState);
+        console.log(`Player ${currentPlayer.name} moved to (${coord.u},${coord.v})`);
       } else {
         console.log('Invalid move to', coord);
       }
@@ -175,11 +107,13 @@ const VertexGridDemo: React.FC<VertexGridDemoProps> = ({
   /**
    * Handle mouse movement for hover effects
    */
-  const handleMouseMove = (event: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+  const handleMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
+    // For now, we'll need to get the canvas element to do coordinate conversion
+    // This will be moved to GameInputHandler in the next phase
+    const canvasElement = event.currentTarget.querySelector('canvas');
+    if (!canvasElement) return;
     
-    const rect = canvas.getBoundingClientRect();
+    const rect = canvasElement.getBoundingClientRect();
     const x = event.clientX - rect.left - canvasSize.width / 2;
     const y = event.clientY - rect.top - canvasSize.height / 2;
     
@@ -197,199 +131,59 @@ const VertexGridDemo: React.FC<VertexGridDemoProps> = ({
   /**
    * Handle canvas clicks
    */
-  const handleCanvasClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleCanvasClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (hoveredVertex) {
       handleVertexClick(hoveredVertex);
     }
   };
 
   /**
-   * Change grid size and create new game state (standalone mode only)
+   * Change grid size and create new game state
    */
   const handleRadiusChange = (newRadius: number) => {
-    if (!standalone) return;
-    
     setGridRadius(newRadius);
-    setLocalGameState(createSampleGameState(newRadius));
+    setGameState(createSampleGameState(newRadius));
     console.log(`Grid size changed to radius ${newRadius}`);
   };
 
   /**
-   * Reset the game to initial state (standalone mode only)
+   * Reset the game to initial state
    */
   const resetGame = () => {
-    if (!standalone) return;
-    
-    setLocalGameState(createSampleGameState(gridRadius));
+    setGameState(createSampleGameState(gridRadius));
     console.log('Game reset to initial state');
   };
 
-  /**
-   * Render the triangular lattice on canvas
-   */
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    // Clear canvas
-    ctx.clearRect(0, 0, canvasSize.width, canvasSize.height);
-    
-    // Center the grid
-    ctx.save();
-    ctx.translate(canvasSize.width / 2, canvasSize.height / 2);
-    
-    const validMoves = getValidMoves();
-    
-    // Draw edges first (so they appear behind vertices and players)
-    gameState.network.edges.forEach((edge) => {
-      if (edge.removed) return; // Don't draw removed edges
-      
-      const fromPixel = TriangularLattice.coordinateToPixel(edge.from, scale);
-      const toPixel = TriangularLattice.coordinateToPixel(edge.to, scale);
-      
-      ctx.beginPath();
-      ctx.moveTo(fromPixel.x, fromPixel.y);
-      ctx.lineTo(toPixel.x, toPixel.y);
-      ctx.strokeStyle = '#6b7280'; // Gray color for edges
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    });
-    
-    // Draw vertex highlights for valid moves
-    if (highlightMoves && selectedAction === 'move' && canMakeMove()) {
-      validMoves.moves.forEach((coord) => {
-        const pixel = TriangularLattice.coordinateToPixel(coord, scale);
-        
-        ctx.beginPath();
-        ctx.arc(pixel.x, pixel.y, 8, 0, 2 * Math.PI);
-        ctx.fillStyle = '#dbeafe'; // Light blue
-        ctx.fill();
-        ctx.strokeStyle = '#3b82f6'; // Blue border
-        ctx.lineWidth = 2;
-        ctx.stroke();
-      });
-    }
-    
-    // Draw hover effect
-    if (hoveredVertex && canMakeMove()) {
-      const pixel = TriangularLattice.coordinateToPixel(hoveredVertex, scale);
-      
-      ctx.beginPath();
-      ctx.arc(pixel.x, pixel.y, 6, 0, 2 * Math.PI);
-      ctx.fillStyle = '#f3f4f6'; // Light gray
-      ctx.fill();
-      ctx.strokeStyle = '#9ca3af'; // Gray border
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    }
-    
-    // Draw coordinate labels (small, for debugging)
-    if (standalone) {
-      const vertices = TriangularLattice.generateVertices(gameState.network.radius);
-      vertices.forEach((coord) => {
-        const pixel = TriangularLattice.coordinateToPixel(coord, scale);
-        
-        ctx.fillStyle = '#9ca3af';
-        ctx.font = '8px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText(`${coord.u},${coord.v}`, pixel.x, pixel.y - 12);
-      });
-    }
-    
-    // Draw players (on top of everything else)
-    gameState.players.forEach((player, index) => {
-      if (!player) return;
-      
-      const pixel = TriangularLattice.coordinateToPixel(player.position, scale);
-      const isCurrentPlayer = index === gameState.currentPlayerIndex;
-      const isMyPlayerInMultiplayer = !standalone && player.id === myPlayerId;
-      
-      // Draw player circle
-      ctx.beginPath();
-      ctx.arc(pixel.x, pixel.y, isCurrentPlayer ? 16 : 12, 0, 2 * Math.PI);
-      ctx.fillStyle = player.color;
-      ctx.fill();
-      
-      // Add glow effect for current player or my player in multiplayer
-      if ((isCurrentPlayer && gameState.phase === 'playing') || isMyPlayerInMultiplayer) {
-        ctx.strokeStyle = player.color;
-        ctx.lineWidth = 3;
-        ctx.shadowColor = player.color;
-        ctx.shadowBlur = 8;
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-      } else {
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-      }
-      
-      // Player number or name initial
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 10px Arial';
-      ctx.textAlign = 'center';
-      if (standalone) {
-        ctx.fillText((index + 1).toString(), pixel.x, pixel.y + 3);
-      } else {
-        ctx.fillText(player.name.charAt(0).toUpperCase(), pixel.x, pixel.y + 3);
-      }
-    });
-    
-    ctx.restore();
-  }, [gameState, hoveredVertex, highlightMoves, selectedAction, canMakeMove, myPlayerId, standalone]);
-
-  const currentPlayer = getCurrentPlayer();
-  const myPlayer = getMyPlayer();
-  const validMovesData = getValidMoves();
+  const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+  const validMoves = getValidMoves();
   const gameStats = VertexGameLogic.getGameStats(gameState);
 
   return (
     <div className="vertex-grid-demo p-6 bg-gray-50 min-h-screen">
       <div className="max-w-6xl mx-auto">
-        {!standalone && (
-          <h2 className="text-3xl font-bold text-center mb-6 text-gray-800">
-            🎯 Multiplayer Vertex Strategy Game
-          </h2>
-        )}
-        
-        {standalone && (
-          <h2 className="text-3xl font-bold text-center mb-6 text-gray-800">
-            🎯 Vertex-Based Triangular Lattice Game (Demo)
-          </h2>
-        )}
+        <h2 className="text-3xl font-bold text-center mb-6 text-gray-800">
+          🎯 Vertex-Based Triangular Lattice Game
+        </h2>
         
         {/* Game Information */}
         <div className="bg-white rounded-lg shadow-md p-4 mb-6">
           <div className="flex justify-between items-center mb-4">
             <div>
-              <h3 className="text-lg font-semibold">
-                {standalone ? 'Current Player' : (isMyTurn ? 'Your Turn!' : 'Opponent\'s Turn')}
-              </h3>
+              <h3 className="text-lg font-semibold">Current Player</h3>
               <div className="flex items-center gap-2">
                 <div 
                   className="w-4 h-4 rounded-full" 
-                  style={{ backgroundColor: currentPlayer?.color }}
+                  style={{ backgroundColor: currentPlayer.color }}
                 ></div>
-                <span className="font-medium">{currentPlayer?.name}</span>
+                <span className="font-medium">{currentPlayer.name}</span>
                 <span className="text-sm text-gray-500">
-                  at ({currentPlayer?.position.u}, {currentPlayer?.position.v})
+                  at ({currentPlayer.position.u}, {currentPlayer.position.v})
                 </span>
               </div>
-              {!standalone && myPlayer && (
-                <div className="text-sm text-gray-600 mt-1">
-                  You are: <span style={{ color: myPlayer.color }}>{myPlayer.name}</span> at ({myPlayer.position.u}, {myPlayer.position.v})
-                </div>
-              )}
             </div>
             <div className="text-right">
               <p className="text-sm text-gray-600">Game Phase</p>
               <p className="font-medium capitalize">{gameState.phase}</p>
-              {gameState.phase === 'waiting' && (
-                <p className="text-orange-600 font-medium">Waiting for player...</p>
-              )}
               {gameState.winner && (
                 <p className="text-green-600 font-bold">
                   Winner: {gameState.players.find(p => p.id === gameState.winner)?.name}
@@ -400,30 +194,19 @@ const VertexGridDemo: React.FC<VertexGridDemoProps> = ({
           
           {/* Controls */}
           <div className="flex flex-wrap gap-4 items-center">
-            {standalone && (
-              <>
-                <div className="flex items-center gap-2">
-                  <label className="text-sm font-medium">Grid Size:</label>
-                  <select 
-                    value={gridRadius} 
-                    onChange={(e) => handleRadiusChange(Number(e.target.value))}
-                    className="px-2 py-1 border border-gray-300 rounded text-sm"
-                  >
-                    <option value={2}>Small (2)</option>
-                    <option value={3}>Medium (3)</option>
-                    <option value={4}>Large (4)</option>
-                    <option value={5}>Extra Large (5)</option>
-                  </select>
-                </div>
-                
-                <button 
-                  onClick={resetGame}
-                  className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 text-sm"
-                >
-                  Reset Game
-                </button>
-              </>
-            )}
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium">Grid Size:</label>
+              <select 
+                value={gridRadius} 
+                onChange={(e) => handleRadiusChange(Number(e.target.value))}
+                className="px-2 py-1 border border-gray-300 rounded text-sm"
+              >
+                <option value={2}>Small (2)</option>
+                <option value={3}>Medium (3)</option>
+                <option value={4}>Large (4)</option>
+                <option value={5}>Extra Large (5)</option>
+              </select>
+            </div>
             
             <div className="flex items-center gap-2">
               <label className="text-sm font-medium">Action:</label>
@@ -431,7 +214,6 @@ const VertexGridDemo: React.FC<VertexGridDemoProps> = ({
                 value={selectedAction}
                 onChange={(e) => setSelectedAction(e.target.value as 'move' | 'cut')}
                 className="px-2 py-1 border border-gray-300 rounded text-sm"
-                disabled={!canMakeMove()}
               >
                 <option value="move">Move</option>
                 <option value="cut">Cut Edge</option>
@@ -450,44 +232,52 @@ const VertexGridDemo: React.FC<VertexGridDemoProps> = ({
                 Highlight Valid Moves
               </label>
             </div>
+
+            <div className="flex items-center gap-2">
+              <input 
+                type="checkbox" 
+                id="show-coordinates"
+                checked={showCoordinates}
+                onChange={(e) => setShowCoordinates(e.target.checked)}
+                className="rounded"
+              />
+              <label htmlFor="show-coordinates" className="text-sm font-medium">
+                Show Coordinates
+              </label>
+            </div>
+            
+            <button 
+              onClick={resetGame}
+              className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 text-sm"
+            >
+              Reset Game
+            </button>
           </div>
         </div>
 
-        {/* Turn indicator for multiplayer */}
-        {!standalone && gameState.phase === 'playing' && (
-          <div className={`text-center p-3 rounded-lg mb-6 ${
-            isMyTurn ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'
-          }`}>
-            {isMyTurn ? (
-              <span className="font-medium">🎯 Your turn! Click a highlighted vertex to move.</span>
-            ) : (
-              <span className="font-medium">⏳ Waiting for {currentPlayer?.name} to make a move...</span>
-            )}
-          </div>
-        )}
-
         {/* Game Board */}
         <div className="bg-white rounded-lg shadow-lg p-6 text-center">
-          <canvas
-            ref={canvasRef}
-            width={canvasSize.width}
-            height={canvasSize.height}
+          <div 
             onMouseMove={handleMouseMove}
             onClick={handleCanvasClick}
-            className={`border border-gray-300 rounded-lg shadow-sm mx-auto ${
-              canMakeMove() ? 'cursor-pointer' : 'cursor-not-allowed'
-            }`}
-            style={{ display: 'block' }}
-          />
+            className="cursor-pointer"
+          >
+            <TriangularLatticeCanvas
+              gameState={gameState}
+              validMoves={validMoves}
+              hoveredVertex={hoveredVertex}
+              selectedAction={selectedAction}
+              highlightMoves={highlightMoves}
+              showCoordinates={showCoordinates}
+              canvasSize={canvasSize}
+              scale={scale}
+            />
+          </div>
           
           {/* Instructions */}
           <div className="mt-6 text-sm text-gray-600">
             <p className="mb-2">
-              <strong>How to Play:</strong> {
-                canMakeMove() 
-                  ? 'Click on a blue-highlighted vertex to move there'
-                  : 'Wait for your turn to make a move'
-              }
+              <strong>How to Play:</strong> Click on a blue-highlighted vertex to move there
             </p>
             <div className="flex justify-center gap-8 text-xs">
               <div className="flex items-center gap-1">
@@ -511,8 +301,8 @@ const VertexGridDemo: React.FC<VertexGridDemoProps> = ({
           <h3 className="font-semibold mb-2">Game Statistics</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             <div>
-              <p><strong>Valid Moves:</strong> {validMovesData.moves.length}</p>
-              <p><strong>Valid Cuts:</strong> {validMovesData.cuts.length}</p>
+              <p><strong>Valid Moves:</strong> {validMoves.moves.length}</p>
+              <p><strong>Valid Cuts:</strong> {validMoves.cuts.length}</p>
             </div>
             <div>
               <p><strong>Total Vertices:</strong> {gameStats.totalVertices}</p>
