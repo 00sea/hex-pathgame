@@ -3,7 +3,7 @@
 // This represents the core domain model for a strategy game where players move between
 // vertices in a triangular lattice and edges are permanently removed upon traversal
 
-import { TriangularCoordinate } from '../utils/triangularLattice';
+import { type TriangularCoordinate } from '../utils/triangularLattice';
 
 /**
  * Represents a player in the vertex-based game
