@@ -6,10 +6,10 @@ import {
   VertexGameLogic, 
   type Player,
   type Move 
-} from '../../../shared/types';
-import InputHandler from './game/InputHandler';
-import UIControls from './game/UIControls';
-import CanvasRendering from './game/CanvasRendering';
+} from '../../../../shared/types';
+import InputHandler from '../game/InputHandler';
+import UIControls from '../game/UIControls';
+import CanvasRendering from '../game/CanvasRendering';
 
 /**
  * Create a sample vertex-based game state for demonstration

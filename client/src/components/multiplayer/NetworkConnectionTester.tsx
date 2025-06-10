@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useSocket } from '../hooks/useSocket';
+import { useSocket } from '../../hooks/useSocket';
 
 // Component for testing different server connections
 export const NetworkConnectionTester: React.FC = () => {
