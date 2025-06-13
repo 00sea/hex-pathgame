@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useSocket } from '../../hooks/useSocket';
 import { NetworkConnectionTester } from './NetworkConnectionTester';
+import GamesList from './GamesList';
 import MultiplayerGame from '../MultiplayerGame';
-import type { GameState, Player, Move, ValidMoves } from '../../../../shared/types';
+import type { GameState, Player, Move, ValidMoves, GameLobby, LobbyInfo } from '../../../../shared/types';
 import { hydrateGameState } from '../../utils/gameStateUtils';
 
 interface TestMessage {
@@ -12,7 +13,7 @@ interface TestMessage {
   timestamp: number;
 }
 
-type MultiplayerTestState = 'lobby' | 'in-game' | 'finished';
+type MultiplayerTestState = 'lobby' | 'in-lobby' | 'in-game' | 'finished';
 
 export const MultiplayerTest: React.FC = () => {
   // Connection and player state
@@ -22,12 +23,17 @@ export const MultiplayerTest: React.FC = () => {
   const [newMessage, setNewMessage] = useState('');
   const [connectedPlayers, setConnectedPlayers] = useState<string[]>([]);
 
-  // Game state
+  // Lobby state  
   const [currentState, setCurrentState] = useState<MultiplayerTestState>('lobby');
+  const [currentLobby, setCurrentLobby] = useState<GameLobby | null>(null);
+  const [availableLobbies, setAvailableLobbies] = useState<LobbyInfo[]>([]);
+  const [myLobbyPlayerId, setMyLobbyPlayerId] = useState<string | null>(null);
+
+  // Game state
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [validMoves, setValidMoves] = useState<ValidMoves | null>(null);
   const [gameId, setGameId] = useState<string | null>(null);
-  const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
+  const [myGamePlayerId, setMyGamePlayerId] = useState<string | null>(null);
 
   const { socket, isConnected, isConnecting, connectionError } = useSocket();
 
@@ -35,7 +41,10 @@ export const MultiplayerTest: React.FC = () => {
   useEffect(() => {
     if (!socket) return;
 
-    // Test/lobby events
+    // ======================
+    // TEST/LOBBY EVENTS
+    // ======================
+    
     socket.on('test-message', (message: TestMessage) => {
       setTestMessages(prev => [...prev, message]);
     });
@@ -44,23 +53,63 @@ export const MultiplayerTest: React.FC = () => {
       setConnectedPlayers(players);
     });
 
-    // Game events
-    socket.on('game-created', (data: { gameId: string; gameState: GameState; playerId: string }) => {
-      console.log('Game created:', data);
-      setGameState(hydrateGameState(data.gameState));
-      setGameId(data.gameId);
-      setMyPlayerId(data.playerId);
-      setCurrentState('in-game');
+    // ======================
+    // LOBBY FLOW EVENTS
+    // ======================
+    
+    // Lobby created successfully
+    socket.on('lobby-created', (data: { lobbyId: string; lobby: GameLobby; playerId: string }) => {
+      console.log('Lobby created:', data);
+      setCurrentLobby(data.lobby);
+      setMyLobbyPlayerId(data.playerId);
+      setCurrentState('in-lobby');
     });
 
-    socket.on('game-joined', (data: { gameState: GameState; playerId: string; validMoves: ValidMoves }) => {
-      console.log('Game joined:', data);
+    // Successfully joined a lobby
+    socket.on('lobby-joined', (data: { lobby: GameLobby; playerId: string }) => {
+      console.log('Lobby joined:', data);
+      setCurrentLobby(data.lobby);
+      setMyLobbyPlayerId(data.playerId);
+      setCurrentState('in-lobby');
+    });
+
+    // Lobby updated (someone joined/left)
+    socket.on('lobby-updated', (data: { lobby: GameLobby }) => {
+      console.log('Lobby updated:', data);
+      setCurrentLobby(data.lobby);
+    });
+
+    // Game starting from lobby
+    socket.on('game-starting', (data: { gameId: string; gameState: GameState; validMoves: ValidMoves }) => {
+      console.log('Game starting from lobby:', data);
       setGameState(hydrateGameState(data.gameState));
-      setMyPlayerId(data.playerId);
       setValidMoves(data.validMoves);
+      setGameId(data.gameId);
+      
+      // Find my player ID in the game state
+      const myPlayer = data.gameState.players.find(p => 
+        currentLobby?.players.some(lp => lp.id === p.id && lp.name === playerName)
+      );
+      setMyGamePlayerId(myPlayer?.id || null);
+      
       setCurrentState('in-game');
+      
+      // Clear lobby state since we're now in game
+      setCurrentLobby(null);
+      setMyLobbyPlayerId(null);
     });
 
+    // Available lobbies list
+    socket.on('lobbies-list', (data: { lobbies: LobbyInfo[] }) => {
+      console.log('Lobbies list received:', data);
+      setAvailableLobbies(data.lobbies || []);
+    });
+
+    // ======================
+    // ACTIVE GAME EVENTS
+    // ======================
+    
+    // Game state updated
     socket.on('game-updated', (data: { gameState: GameState; validMoves?: ValidMoves }) => {
       console.log('Game updated:', data);
       setGameState(hydrateGameState(data.gameState));
@@ -74,15 +123,20 @@ export const MultiplayerTest: React.FC = () => {
       }
     });
 
+    // Game ended
     socket.on('game-ended', (data: { winner: string; reason: string; finalState: GameState }) => {
       console.log('Game ended:', data);
       setGameState(hydrateGameState(data.finalState));
       setCurrentState('finished');
     });
 
+    // ======================
+    // ERROR HANDLING
+    // ======================
+    
     socket.on('error', (data: { message: string }) => {
-      console.error('Game error:', data.message);
-      alert(`Game Error: ${data.message}`);
+      console.error('Socket error:', data.message);
+      alert(`Error: ${data.message}`);
     });
 
     socket.on('move-invalid', (data: { reason: string }) => {
@@ -94,14 +148,17 @@ export const MultiplayerTest: React.FC = () => {
     return () => {
       socket.off('test-message');
       socket.off('players-updated');
-      socket.off('game-created');
-      socket.off('game-joined');
+      socket.off('lobby-created');
+      socket.off('lobby-joined');
+      socket.off('lobby-updated');
+      socket.off('game-starting');
+      socket.off('lobbies-list');
       socket.off('game-updated');
       socket.off('game-ended');
       socket.off('error');
       socket.off('move-invalid');
     };
-  }, [socket]);
+  }, [socket, currentLobby, playerName]);
 
   // Send player name to server when connected
   useEffect(() => {
@@ -109,6 +166,20 @@ export const MultiplayerTest: React.FC = () => {
       socket.emit('set-player-name', { playerName });
     }
   }, [socket, isConnected, isNameSet, playerName]);
+
+  // Auto-refresh lobbies when in lobby browser
+  useEffect(() => {
+    if (socket && isConnected && currentState === 'lobby') {
+      const interval = setInterval(() => {
+        socket.emit('list-lobbies');
+      }, 3000); // Refresh every 3 seconds
+
+      // Initial fetch
+      socket.emit('list-lobbies');
+
+      return () => clearInterval(interval);
+    }
+  }, [socket, isConnected, currentState]);
 
   const handleSetName = () => {
     if (playerName.trim()) {
@@ -130,44 +201,70 @@ export const MultiplayerTest: React.FC = () => {
     }
   };
 
-  const handleCreateGame = () => {
+  const handleCreateLobby = () => {
     if (socket && playerName) {
-      socket.emit('create-game', {
+      console.log('Creating lobby...');
+      socket.emit('create-lobby', {
         playerName,
-        gridRadius: 3
+        config: { gridRadius: 3 }
       });
+    }
+  };
+
+  const handleJoinLobby = (lobbyId: string) => {
+    if (socket && playerName) {
+      console.log(`Joining lobby: ${lobbyId}`);
+      socket.emit('join-lobby', {
+        lobbyId,
+        playerName
+      });
+    }
+  };
+
+  const handleLeaveLobby = () => {
+    if (socket && currentLobby) {
+      console.log(`Leaving lobby: ${currentLobby.id}`);
+      socket.emit('leave-lobby', {
+        lobbyId: currentLobby.id
+      });
+      
+      // Reset lobby state
+      setCurrentLobby(null);
+      setMyLobbyPlayerId(null);
+      setCurrentState('lobby');
     }
   };
 
   const handleMakeMove = (move: Move) => {
     if (socket && gameId) {
+      console.log('Making move:', move);
       socket.emit('make-move', { gameId, move });
     }
   };
 
   const handleLeaveGame = () => {
     if (socket && gameId) {
-      // You might want to add a 'leave-game' event to your server
+      console.log(`Leaving game: ${gameId}`);
       socket.emit('leave-game', { gameId });
     }
     
-    // Reset local game state
+    // Reset game state
     setCurrentState('lobby');
     setGameState(null);
     setValidMoves(null);
     setGameId(null);
-    setMyPlayerId(null);
+    setMyGamePlayerId(null);
   };
 
   const getMyPlayer = (): Player | null => {
-    if (!gameState || !myPlayerId) return null;
-    return gameState.players.find(p => p?.id === myPlayerId) || null;
+    if (!gameState || !myGamePlayerId) return null;
+    return gameState.players.find(p => p?.id === myGamePlayerId) || null;
   };
 
   const isMyTurn = (): boolean => {
-    if (!gameState || !myPlayerId) return false;
+    if (!gameState || !myGamePlayerId) return false;
     const currentPlayer = gameState.players[gameState.currentPlayerIndex];
-    return currentPlayer?.id === myPlayerId;
+    return currentPlayer?.id === myGamePlayerId;
   };
 
   const getStatusColor = () => {
@@ -209,15 +306,99 @@ export const MultiplayerTest: React.FC = () => {
     );
   }
 
-  // Otherwise, show the lobby interface
+  // If we're in a lobby, show the lobby interface
+  if (currentState === 'in-lobby' && currentLobby) {
+    const myLobbyPlayer = currentLobby.players.find(p => p.id === myLobbyPlayerId);
+    
+    return (
+      <div className="p-4">
+        <div className="max-w-4xl mx-auto">
+          <header className="text-center mb-8">
+            <h2 className="text-3xl font-bold text-gray-800 mb-2">
+              🏠 Game Lobby
+            </h2>
+            <p className="text-gray-600">Waiting for players to join...</p>
+          </header>
+
+          {/* Lobby Info */}
+          <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold">Lobby: {currentLobby.id.slice(-8)}</h3>
+              <div className="text-sm text-gray-500">
+                Grid Size: {currentLobby.config.gridRadius}
+              </div>
+            </div>
+
+            {/* Players in Lobby */}
+            <div className="mb-4">
+              <h4 className="font-medium mb-2">
+                Players ({currentLobby.players.length}/{currentLobby.maxPlayers}):
+              </h4>
+              <div className="space-y-2">
+                {currentLobby.players.map((player, index) => (
+                  <div
+                    key={player.id}
+                    className={`flex items-center gap-3 p-3 rounded-lg ${
+                      player.id === myLobbyPlayerId 
+                        ? 'bg-blue-50 border border-blue-200' 
+                        : 'bg-gray-50'
+                    }`}
+                  >
+                    <div 
+                      className="w-6 h-6 rounded-full border-2 border-white shadow-sm"
+                      style={{ backgroundColor: player.color }}
+                    />
+                    <div className="flex-1">
+                      <div className="font-medium">
+                        {player.name}
+                        {player.id === myLobbyPlayerId && ' (You)'}
+                        {index === 0 && ' (Host)'}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Waiting Message */}
+            {currentLobby.players.length < currentLobby.maxPlayers && (
+              <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg mb-4 text-center">
+                <strong>Waiting for {currentLobby.maxPlayers - currentLobby.players.length} more player(s) to join...</strong>
+                <div className="text-sm mt-1">Share lobby ID: {currentLobby.id.slice(-8)}</div>
+              </div>
+            )}
+
+            {/* Ready Message */}
+            {currentLobby.players.length === currentLobby.maxPlayers && (
+              <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg mb-4 text-center">
+                <strong>🎮 All players ready! Game starting...</strong>
+              </div>
+            )}
+
+            {/* Leave Lobby Button */}
+            <div className="flex justify-center">
+              <button
+                onClick={handleLeaveLobby}
+                className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+              >
+                Leave Lobby
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Otherwise, show the main lobby browser
   return (
     <div className="p-4">
       <div className="max-w-4xl mx-auto">
         <header className="text-center mb-8">
           <h2 className="text-3xl font-bold text-gray-800 mb-2">
-            🧪 Multiplayer Connection Test
+            🧪 Multiplayer Lobby System
           </h2>
-          <p className="text-gray-600">Test real-time communication and play games across devices</p>
+          <p className="text-gray-600">Create or join game lobbies to play with others</p>
         </header>
 
         {/* Connection Status */}
@@ -268,13 +449,13 @@ export const MultiplayerTest: React.FC = () => {
                 disabled={!playerName.trim()}
                 className="px-6 py-2 bg-blue-500 text-white rounded disabled:bg-gray-300 hover:bg-blue-600"
               >
-                Join Lobby
+                Join Lobby System
               </button>
             </div>
           </div>
         )}
 
-        {/* Multiplayer Lobby */}
+        {/* Main Lobby Interface */}
         {isConnected && isNameSet && (
           <>
             {/* Connected Players */}
@@ -300,18 +481,91 @@ export const MultiplayerTest: React.FC = () => {
               </div>
             </div>
 
-            {/* Game Creation */}
+            {/* Lobby Creation */}
             <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-              <h3 className="text-xl font-semibold mb-4">Start a Game</h3>
+              <h3 className="text-xl font-semibold mb-4">Create New Lobby</h3>
               <p className="text-gray-600 mb-4">
-                Create a new vertex strategy game. Another player can join once you create it.
+                Create a new game lobby. Other players can discover and join it.
               </p>
               <button
-                onClick={handleCreateGame}
+                onClick={handleCreateLobby}
                 className="px-6 py-2 bg-purple-500 text-white rounded hover:bg-purple-600"
               >
-                🎮 Create Vertex Game
+                🎮 Create Lobby
               </button>
+            </div>
+
+            {/* Available Lobbies */}
+            <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+              <h3 className="text-xl font-semibold mb-4">Available Lobbies</h3>
+              
+              {availableLobbies.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <div className="text-lg mb-2">🎮</div>
+                  <div className="font-medium">No lobbies available</div>
+                  <div className="text-sm">Create a new lobby to get started!</div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {availableLobbies.map((lobby) => (
+                    <div
+                      key={lobby.id}
+                      className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors"
+                    >
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <div className="font-medium text-gray-900">
+                              Lobby #{lobby.id.slice(-8)}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                              <span className="text-sm text-yellow-600 font-medium">
+                                Waiting for players
+                              </span>
+                            </div>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-4 text-sm text-gray-600 mb-3">
+                            <div>
+                              <span className="font-medium">Host:</span> {lobby.players[0]?.name || 'Unknown'}
+                            </div>
+                            <div>
+                              <span className="font-medium">Grid Size:</span> {lobby.config.gridRadius}
+                            </div>
+                            <div>
+                              <span className="font-medium">Players:</span> {lobby.players.length}/{lobby.maxPlayers}
+                            </div>
+                            <div>
+                              <span className="font-medium">Created:</span> {new Date(lobby.createdAt).toLocaleTimeString()}
+                            </div>
+                          </div>
+
+                          {/* Show current players */}
+                          <div className="flex gap-2">
+                            {lobby.players.map((player, index) => (
+                              <div key={player.id} className="flex items-center gap-1">
+                                <div 
+                                  className="w-3 h-3 rounded-full border border-white shadow-sm"
+                                  style={{ backgroundColor: player.color }}
+                                />
+                                <span className="text-xs text-gray-600">{player.name}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        
+                        <button
+                          onClick={() => handleJoinLobby(lobby.id)}
+                          className="ml-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 font-medium"
+                        >
+                          Join Lobby
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Message Test */}
@@ -374,15 +628,14 @@ export const MultiplayerTest: React.FC = () => {
             {/* Instructions */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
               <h4 className="font-semibold text-blue-800 mb-2">
-                🧪 Multiplayer Test Instructions
+                🎮 New Lobby System Instructions
               </h4>
               <ul className="text-blue-700 space-y-1 text-sm">
-                <li>• Open this same URL on another device: <code className="bg-blue-100 px-1 rounded">http://192.168.1.72:3000</code></li>
-                <li>• Set different player names on each device</li>
-                <li>• One player clicks "Create Vertex Game" to start</li>
-                <li>• The other player will automatically join when they're in the lobby</li>
-                <li>• Play the game in real-time across devices!</li>
-                <li>• Use the messaging area to communicate during testing</li>
+                <li>• <strong>Create Lobby:</strong> Click "Create Lobby" to start a new game room</li>
+                <li>• <strong>Join Lobby:</strong> See available lobbies above and click "Join Lobby"</li>
+                <li>• <strong>Auto-Start:</strong> Game automatically starts when 2 players join a lobby</li>
+                <li>• <strong>Network Play:</strong> Share this URL with friends: <code className="bg-blue-100 px-1 rounded">http://192.168.1.72:3000</code></li>
+                <li>• <strong>Real-time:</strong> Everything syncs instantly across devices</li>
               </ul>
             </div>
           </>

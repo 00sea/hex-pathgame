@@ -1,7 +1,5 @@
 // shared/types/game.ts
 // Game state and entity definitions for vertex-based triangular lattice gameplay
-// This represents the core domain model for a strategy game where players move between
-// vertices in a triangular lattice and edges are permanently removed upon traversal
 
 import { type TriangularCoordinate } from '../utils/triangularLattice';
 
@@ -14,6 +12,41 @@ export interface Player {
   name: string;                            // Display name chosen by the player
   position: TriangularCoordinate;          // Current vertex position in the triangular lattice
   color: string;                           // Hex color code for visual representation (e.g., '#3b82f6')
+}
+
+/**
+ * Represents a player in a lobby (before game starts)
+ * Same as Player but without position since game hasn't started yet
+ */
+export interface LobbyPlayer {
+  id: string;                              // Unique identifier for multiplayer coordination
+  name: string;                            // Display name chosen by the player
+  color: string;                           // Hex color code for visual representation
+}
+
+/**
+ * Represents a game lobby waiting for players to join
+ * This exists before the actual game starts
+ */
+export interface GameLobby {
+  id: string;                              // Unique lobby identifier
+  players: LobbyPlayer[];                  // Dynamic array of players (1-2 players)
+  config: GameConfig;                      // Game configuration (grid size, etc.)
+  createdAt: Date;                         // When the lobby was created
+  phase: 'waiting-for-players';            // Lobby phase (always waiting)
+  maxPlayers: number;                      // Maximum players allowed (2 for this game)
+}
+
+/**
+ * Summary information about a lobby for listing purposes
+ * Used when displaying available lobbies to join
+ */
+export interface LobbyInfo {
+  id: string;                              // Lobby identifier
+  players: LobbyPlayer[];                  // Current players in lobby
+  config: GameConfig;                      // Game configuration
+  createdAt: Date;                         // When lobby was created
+  maxPlayers: number;                      // Maximum players allowed (2)
 }
 
 /**
@@ -46,10 +79,12 @@ export interface Move {
  * Complete state of a vertex-based game session
  * This represents the authoritative game state including player positions,
  * remaining edge network, and game phase information
+ * 
+ * NOTE: This now only exists when we have exactly 2 players
  */
 export interface GameState {
   id: string;                              // Unique game session identifier
-  players: [Player, Player];               // Exactly two players per game
+  players: [Player, Player];               // Exactly two players per game (never null!)
   currentPlayerIndex: number;              // Which player's turn it is (0 or 1)
   
   /**
@@ -62,26 +97,27 @@ export interface GameState {
     edges: Map<string, Edge>;              // All edges in the network (edge key -> edge object)
   };
   
-  phase: 'waiting' | 'playing' | 'finished';  // Current state of the game session
+  phase: 'playing' | 'finished';           // Current state of the game (removed 'waiting')
   winner?: string;                         // Player ID of the winner (if game is finished)
   moveHistory: Move[];                     // Complete record of all moves made in this game
 }
 
 /**
- * Summary information about a game for lobby/listing purposes
- * Used when displaying available games to join
+ * Summary information about an active game for monitoring purposes
+ * Used for server stats and admin interfaces
  */
 export interface GameInfo {
   id: string;                              // Game session identifier
-  playerCount: number;                     // How many players have joined (0-2)
-  phase: GameState['phase'];               // Current game phase
-  createdAt: Date;                         // When the game was created
+  playerCount: number;                     // Always 2 for active games
+  phase: GameState['phase'];               // Current game phase (playing | finished)
+  createdAt: Date;                         // When the game was created (not lobby)
   lastActivity?: Date;                     // Most recent move or activity
   networkSize?: {                          // Optional summary of board size
     radius: number;
     vertexCount: number;
     edgeCount: number;
   };
+  playerNames: string[];                   // Names of both players
 }
 
 /**

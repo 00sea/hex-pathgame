@@ -1,6 +1,6 @@
 // server/src/GameManager.ts
-// Multiplayer game session management for vertex-based triangular lattice game
-// This handles server-side coordination while using shared game logic for rules
+// Manages active game sessions for vertex-based triangular lattice game
+// This handles server-side coordination for games with exactly 2 players
 
 import { v4 as uuidv4 } from 'uuid';
 import { 
@@ -12,122 +12,68 @@ import {
   ValidMoves,
   VertexGameLogic 
 } from '../../shared/types';
+import { GameRoom } from './types/internal';
 
 /**
- * Server-side game session management
+ * GameManager - Handles active game sessions only
  * 
- * This class handles the multiplayer aspects of the game while delegating
- * all actual game logic to the shared VertexGameLogic class. It manages:
- * - Multiple concurrent game sessions
- * - Player connections and game room membership
- * - Move validation and state updates
- * - Broadcasting updates to connected clients
+ * This class manages games that are already in progress with exactly 2 players.
+ * It no longer handles lobby/waiting logic - that's now handled by LobbyManager.
+ * 
+ * Responsibilities:
+ * - Creating complete games from lobby transitions
+ * - Processing moves and updating game state
+ * - Managing real-time communication between players
+ * - Tracking game completion and cleanup
  */
 export class GameManager {
-  private games = new Map<string, {
-    gameState: GameState;
-    sockets: Map<string, any>; // Socket instances for players in this game
-    createdAt: Date;
-    lastActivity: Date;
-  }>();
-
-  private playerConnections = new Map<string, {
-    socketId: string;
-    playerName: string;
-    gameId?: string;
-    connectedAt: Date;
-  }>();
+  private games = new Map<string, GameRoom>();
 
   /**
-   * Create a new game session
+   * Create a new active game from a completed lobby
    * 
-   * Uses the shared VertexGameLogic to create the initial game state,
-   * then sets up server-side tracking for multiplayer coordination.
+   * This is called by LobbyManager when a lobby has 2 players ready to start.
+   * Uses shared VertexGameLogic to create the initial game state with proper
+   * triangular lattice, player positions, and edge network.
    */
-  createGame(
-    playerName: string, 
-    config: GameConfig = { gridRadius: 3 }
+  createGameFromLobby(
+    lobbyId: string,
+    player1: Omit<Player, 'position'>,
+    player2: Omit<Player, 'position'>,
+    config: GameConfig
   ): { gameId: string; gameState: GameState } {
     const gameId = uuidv4();
-    const playerId = uuidv4();
     
-    // Create player object for the game creator
-    const player1 = {
-      id: playerId,
-      name: playerName,
-      color: '#3b82f6' // Blue for player 1
-    };
+    console.log(`Creating game ${gameId} from lobby ${lobbyId}`);
+    console.log(`Players: ${player1.name} vs ${player2.name}`);
+    console.log(`Config: Grid radius ${config.gridRadius}`);
     
-    // Use shared game logic to create the initial game state
-    // Note: This creates a game in 'playing' phase but with only one player
-    // We'll need to modify this once the second player joins
-    const gameState = VertexGameLogic.createGame(gameId, player1, player1, config);
+    // Use shared game logic to create the complete initial game state
+    const gameState = VertexGameLogic.createGame(gameId, player1, player2, config);
     
-    // Override the game state to 'waiting' since we only have one player
-    gameState.phase = 'waiting';
-    gameState.players = [gameState.players[0], null as any]; // Second player slot empty
+    // Game starts immediately in 'playing' phase since we have 2 players
+    gameState.phase = 'playing';
     
     // Set up server-side game tracking
     this.games.set(gameId, {
+      id: gameId,
       gameState,
       sockets: new Map(),
       createdAt: new Date(),
       lastActivity: new Date()
     });
     
-    console.log(`Game created: ${gameId} by ${playerName}`);
+    console.log(`Active game created: ${gameId}`);
+    console.log(`Player 1 (${player1.name}) at (${gameState.players[0].position.u}, ${gameState.players[0].position.v})`);
+    console.log(`Player 2 (${player2.name}) at (${gameState.players[1].position.u}, ${gameState.players[1].position.v})`);
+    
     return { gameId, gameState };
   }
 
   /**
-   * Add a second player to an existing game
+   * Process a move from a player in an active game
    * 
-   * This completes the game setup and transitions to 'playing' phase.
-   */
-  joinGame(gameId: string, playerName: string, socketId: string): GameState {
-    const gameRoom = this.games.get(gameId);
-    
-    if (!gameRoom) {
-      throw new Error('Game not found');
-    }
-    
-    if (gameRoom.gameState.phase !== 'waiting') {
-      throw new Error('Game is not accepting new players');
-    }
-    
-    if (gameRoom.gameState.players[1] !== null) {
-      throw new Error('Game is already full');
-    }
-    
-    // Create the second player
-    const player2: Player = {
-      id: uuidv4(),
-      name: playerName,
-      position: { u: 0, v: 0 }, // Start at center like player 1
-      color: '#ef4444' // Red for player 2
-    };
-    
-    // Update the game state with the second player
-    gameRoom.gameState.players[1] = player2;
-    gameRoom.gameState.phase = 'playing';
-    gameRoom.lastActivity = new Date();
-    
-    // Track this player's connection
-    this.playerConnections.set(socketId, {
-      socketId,
-      playerName,
-      gameId,
-      connectedAt: new Date()
-    });
-    
-    console.log(`${playerName} joined game: ${gameId}`);
-    return gameRoom.gameState;
-  }
-
-  /**
-   * Process a move from a player
-   * 
-   * This validates the move using shared game logic, applies it if valid,
+   * Validates the move using shared game logic, applies it if valid,
    * and returns the updated game state for broadcasting to all players.
    */
   makeMove(gameId: string, move: Move, socketId: string): GameState {
@@ -141,8 +87,18 @@ export class GameManager {
       throw new Error('Game is not in progress');
     }
     
+    console.log(`Processing move in game ${gameId}:`);
+    console.log(`  Type: ${move.type}`);
+    console.log(`  Player: ${move.player}`);
+    if (move.type === 'move') {
+      console.log(`  From: (${move.from?.u}, ${move.from?.v}) To: (${move.to?.u}, ${move.to?.v})`);
+    } else if (move.type === 'cut') {
+      console.log(`  Cut edge: (${move.edgeCut?.from.u}, ${move.edgeCut?.from.v}) to (${move.edgeCut?.to.u}, ${move.edgeCut?.to.v})`);
+    }
+    
     // Validate the move using shared game logic
     if (!VertexGameLogic.isValidMove(gameRoom.gameState, move)) {
+      console.log(`Invalid move rejected in game ${gameId}`);
       throw new Error('Invalid move');
     }
     
@@ -153,20 +109,22 @@ export class GameManager {
     gameRoom.gameState = newGameState;
     gameRoom.lastActivity = new Date();
     
-    console.log(`Move applied in game ${gameId}: ${move.type} by ${move.player}`);
+    console.log(`Move applied successfully in game ${gameId}`);
+    console.log(`  Current player now: ${newGameState.players[newGameState.currentPlayerIndex].name}`);
     
     // Check if game ended
     if (newGameState.phase === 'finished') {
-      console.log(`Game ${gameId} ended. Winner: ${newGameState.winner}`);
+      const winner = newGameState.players.find(p => p.id === newGameState.winner);
+      console.log(`Game ${gameId} ended! Winner: ${winner?.name}`);
     }
     
     return newGameState;
   }
 
   /**
-   * Get valid moves for the current player in a game
+   * Get valid moves for the current player in an active game
    * 
-   * This uses shared game logic to compute what moves are available.
+   * Uses shared game logic to compute what moves are available.
    */
   getValidMoves(gameId: string): ValidMoves | null {
     const gameRoom = this.games.get(gameId);
@@ -176,30 +134,33 @@ export class GameManager {
     }
     
     const currentPlayer = gameRoom.gameState.players[gameRoom.gameState.currentPlayerIndex];
-    if (!currentPlayer) {
-      return null;
-    }
-    
     return VertexGameLogic.getValidMoves(gameRoom.gameState, currentPlayer);
   }
 
   /**
-   * Get a list of available games for the lobby
-   * 
-   * Returns summary information about games that players can view or join.
+   * Get current game state by ID
    */
-  getAvailableGames(): GameInfo[] {
+  getGameState(gameId: string): GameState | null {
+    const gameRoom = this.games.get(gameId);
+    return gameRoom ? gameRoom.gameState : null;
+  }
+
+  /**
+   * Get a list of active games for monitoring/admin purposes
+   * 
+   * Returns summary information about games currently in progress.
+   */
+  getActiveGames(): GameInfo[] {
     const games: GameInfo[] = [];
     
-    for (const [gameId, gameRoom] of this.games) {
-      const playerCount = gameRoom.gameState.players.filter(p => p !== null).length;
-      
+    for (const gameRoom of this.games.values()) {
       games.push({
-        id: gameId,
-        playerCount,
+        id: gameRoom.gameState.id,
+        playerCount: 2, // Always 2 for active games
         phase: gameRoom.gameState.phase,
         createdAt: gameRoom.createdAt,
         lastActivity: gameRoom.lastActivity,
+        playerNames: gameRoom.gameState.players.map(p => p.name),
         networkSize: {
           radius: gameRoom.gameState.network.radius,
           vertexCount: gameRoom.gameState.network.vertices.size,
@@ -212,125 +173,118 @@ export class GameManager {
   }
 
   /**
-   * Add a socket to a game room for real-time communication
-   * 
-   * This enables the server to broadcast updates to all players in the game.
+   * Add a socket to an active game for real-time communication
    */
   addSocketToGame(gameId: string, socket: any): void {
     const gameRoom = this.games.get(gameId);
     if (gameRoom) {
       gameRoom.sockets.set(socket.id, socket);
+      console.log(`Socket ${socket.id} added to game ${gameId}`);
     }
   }
 
   /**
-   * Remove a socket from a game room
-   * 
-   * This cleans up when a player disconnects or leaves a game.
+   * Remove a socket from an active game
    */
   removeSocketFromGame(gameId: string, socketId: string): void {
     const gameRoom = this.games.get(gameId);
     if (gameRoom) {
       gameRoom.sockets.delete(socketId);
+      console.log(`Socket ${socketId} removed from game ${gameId}`);
     }
   }
 
   /**
-   * Handle player disconnection
+   * Handle player disconnection from active games
    * 
-   * This cleans up server-side state when a player disconnects.
    * In a production game, you might want to pause the game or allow reconnection.
+   * For now, we'll just clean up the connection but keep the game running.
    */
   handlePlayerDisconnect(socketId: string): void {
-    const connection = this.playerConnections.get(socketId);
-    
-    if (connection && connection.gameId) {
-      console.log(`Player ${connection.playerName} disconnected from game ${connection.gameId}`);
-      
-      // Remove socket from game room
-      this.removeSocketFromGame(connection.gameId, socketId);
-      
-      // In a more sophisticated implementation, you might:
-      // - Pause the game temporarily
-      // - Allow reconnection within a time window
-      // - Notify the other player about the disconnection
-      // - End the game if disconnection is permanent
+    for (const [gameId, gameRoom] of this.games) {
+      if (gameRoom.sockets.has(socketId)) {
+        const player = this.getPlayerBySocketId(gameRoom.gameState, socketId);
+        const playerName = player?.name || 'Unknown';
+        
+        console.log(`Player ${playerName} disconnected from game ${gameId}`);
+        
+        // Remove socket from game room
+        this.removeSocketFromGame(gameId, socketId);
+        
+        // In a more sophisticated implementation, you might:
+        // - Pause the game temporarily  
+        // - Allow reconnection within a time window
+        // - Notify the other player about the disconnection
+        // - End the game if disconnection is permanent
+        
+        break;
+      }
     }
+  }
+
+  /**
+   * Helper method to find a player by their socket ID
+   */
+  private getPlayerBySocketId(gameState: GameState, socketId: string): Player | null {
+    // This is a simplified lookup - in a real implementation you'd need to
+    // track socket ID to player ID mappings more carefully
+    return null;
+  }
+
+  /**
+   * Clean up finished or abandoned games
+   * 
+   * Remove games that have ended or been inactive for too long.
+   */
+  cleanupOldGames(maxAgeMinutes: number = 120): void {
+    const cutoffTime = new Date(Date.now() - maxAgeMinutes * 60 * 1000);
     
-    this.playerConnections.delete(socketId);
+    for (const [gameId, gameRoom] of this.games) {
+      const shouldCleanup = 
+        gameRoom.gameState.phase === 'finished' || 
+        gameRoom.lastActivity < cutoffTime ||
+        gameRoom.sockets.size === 0; // No connected players
+        
+      if (shouldCleanup) {
+        console.log(`Cleaning up old game: ${gameId} (Phase: ${gameRoom.gameState.phase})`);
+        this.games.delete(gameId);
+      }
+    }
   }
 
   /**
-   * Get game state by ID
-   * 
-   * Utility method for retrieving current game state.
+   * Get statistics about active games for monitoring
    */
-  getGameState(gameId: string): GameState | null {
-    const gameRoom = this.games.get(gameId);
-    return gameRoom ? gameRoom.gameState : null;
-  }
-
-  /**
-   * Get basic server statistics
-   * 
-   * Useful for monitoring and debugging.
-   */
-  getServerStats(): {
+  getGameStats(): {
     activeGames: number;
     playingGames: number;
-    waitingGames: number;
-    connectedPlayers: number;
+    finishedGames: number;
+    totalActivePlayers: number;
   } {
     const activeGames = this.games.size;
     let playingGames = 0;
-    let waitingGames = 0;
+    let finishedGames = 0;
+    let totalActivePlayers = 0;
     
     for (const gameRoom of this.games.values()) {
       if (gameRoom.gameState.phase === 'playing') {
         playingGames++;
-      } else if (gameRoom.gameState.phase === 'waiting') {
-        waitingGames++;
+        totalActivePlayers += 2; // Always 2 players per active game
+      } else if (gameRoom.gameState.phase === 'finished') {
+        finishedGames++;
       }
     }
     
     return {
       activeGames,
       playingGames,
-      waitingGames,
-      connectedPlayers: this.playerConnections.size
+      finishedGames,
+      totalActivePlayers
     };
   }
 
   /**
-   * Clean up old games
-   * 
-   * Remove finished games or games that have been inactive for too long.
-   * This prevents memory leaks in long-running servers.
-   */
-  cleanupOldGames(maxAgeMinutes: number = 60): void {
-    const cutoffTime = new Date(Date.now() - maxAgeMinutes * 60 * 1000);
-    
-    for (const [gameId, gameRoom] of this.games) {
-      const shouldCleanup = 
-        gameRoom.gameState.phase === 'finished' || 
-        gameRoom.lastActivity < cutoffTime;
-        
-      if (shouldCleanup) {
-        console.log(`Cleaning up old game: ${gameId}`);
-        this.games.delete(gameId);
-        
-        // Clean up any player connections associated with this game
-        for (const [socketId, connection] of this.playerConnections) {
-          if (connection.gameId === gameId) {
-            this.playerConnections.delete(socketId);
-          }
-        }
-      }
-    }
-  }
-
-  /**
-   * Get the active game count for server monitoring
+   * Get the total number of active games for simple monitoring
    */
   getActiveGameCount(): number {
     return this.games.size;
