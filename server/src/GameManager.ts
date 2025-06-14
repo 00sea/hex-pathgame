@@ -112,10 +112,19 @@ export class GameManager {
     } else if (move.type === 'cut') {
       console.log(`  Cut edge: (${move.edgeCut?.from.u}, ${move.edgeCut?.from.v}) to (${move.edgeCut?.to.u}, ${move.edgeCut?.to.v})`);
     }
+
+    console.log(`\n🕵️ STEP 3A - STORAGE RETRIEVAL DEBUG:`);
+    console.log(`  📊 Retrieved gameState.network.edges type: ${gameRoom.gameState.network.edges.constructor.name}`);
+    console.log(`  📊 Retrieved gameState.network.vertices type: ${gameRoom.gameState.network.vertices.constructor.name}`);
+    console.log(`  🔍 Retrieved edges has .get method: ${typeof gameRoom.gameState.network.edges.get}`);
+    console.log(`  🔍 Retrieved edges has .size property: ${gameRoom.gameState.network.edges.size}`);
+    console.log(`  🔍 Retrieved edges keys sample:`, Array.from(Object.keys(gameRoom.gameState.network.edges)).slice(0, 3));
+    console.log(`🔄 STEP 3B - ABOUT TO VALIDATE MOVE...`);
     
     // Validate the move using shared game logic
     if (!VertexGameLogic.isValidMove(gameRoom.gameState, move)) {
       console.log(`Invalid move rejected in game ${gameId}`);
+      console.log(`❌ STEP 3C - VALIDATION FAILED`);
       throw new Error('Invalid move');
     }
     

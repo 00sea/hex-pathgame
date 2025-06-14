@@ -1,5 +1,5 @@
 // client/src/utils/gameStateUtils.ts
-import type { GameState, Edge, GameLobby, LobbyInfo } from '../types';
+import type { GameState, Edge, GameLobby, LobbyInfo } from '../../shared/types';
 
 /**
  * Hydrate a game state received from the server
@@ -91,19 +91,27 @@ export function hydrateLobbiesList(rawLobbies: any[]): LobbyInfo[] {
  * 
  * Convert Map and Set objects to plain objects/arrays for JSON serialization.
  * This is the inverse of hydrateGameState.
+ * 
+ * IMPORTANT: Creates a deep copy to avoid mutating the original gameState.
  */
 export function dehydrateGameState(gameState: GameState): any {
-  const dehydrated = { ...gameState };
-
-  // Convert Set to array
-  if (dehydrated.network?.vertices instanceof Set) {
-    dehydrated.network.vertices = Array.from(dehydrated.network.vertices) as any;
-  }
-
-  // Convert Map to object
-  if (dehydrated.network?.edges instanceof Map) {
-    dehydrated.network.edges = Object.fromEntries(dehydrated.network.edges) as any;
-  }
+  // Create deep copy to avoid mutating the original
+  const dehydrated = {
+    ...gameState,
+    players: [...gameState.players], // Copy players array
+    network: {
+      ...gameState.network,
+      // Convert Set to array (creating new array, not mutating original Set)
+      vertices: gameState.network.vertices instanceof Set 
+        ? Array.from(gameState.network.vertices) 
+        : gameState.network.vertices,
+      // Convert Map to object (creating new object, not mutating original Map)  
+      edges: gameState.network.edges instanceof Map 
+        ? Object.fromEntries(gameState.network.edges) 
+        : gameState.network.edges
+    },
+    moveHistory: [...gameState.moveHistory] // Copy move history array
+  };
 
   return dehydrated;
 }
