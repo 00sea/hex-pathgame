@@ -209,7 +209,7 @@ io.on('connection', (socket) => {
       const validMoves = gameManager.getValidMoves(data.gameId);
       
       // Broadcast updated state to all players in the game
-      io.to(data.gameId).emit('game-updated', { gameState, validMoves });
+      io.to(data.gameId).emit('game-updated', { gameState: dehydrateGameState(gameState), validMoves });
       
       // Check if game ended
       if (gameState.phase === 'finished') {
