@@ -59,6 +59,8 @@ export const MultiplayerTest: React.FC = () => {
     
     // Lobby created successfully
     socket.on('lobby-created', (data: { lobbyId: string; lobby: GameLobby; playerId: string }) => {
+      console.log('🏠 LOBBY-CREATED DEBUG (should only happen for Player 1):');
+      console.log('  📋 Setting currentLobby to:', data.lobby);
       console.log('Lobby created:', data);
       setCurrentLobby(hydrateLobby(data.lobby));
       setMyLobbyPlayerId(data.playerId);
@@ -67,6 +69,8 @@ export const MultiplayerTest: React.FC = () => {
 
     // Successfully joined a lobby
     socket.on('lobby-joined', (data: { lobby: GameLobby; playerId: string }) => {
+      console.log('🚪 LOBBY-JOINED DEBUG (should happen for Player 2):');
+      console.log('  📋 Setting currentLobby to:', data.lobby);
       console.log('Lobby joined:', data);
       setCurrentLobby(hydrateLobby(data.lobby));
       setMyLobbyPlayerId(data.playerId);
@@ -75,6 +79,9 @@ export const MultiplayerTest: React.FC = () => {
 
     // Lobby updated (someone joined/left)
     socket.on('lobby-updated', (data: { lobby: GameLobby }) => {
+      console.log('🔄 LOBBY-UPDATED DEBUG:');
+      console.log('  📋 Current currentLobby before update:', currentLobby);
+      console.log('  📋 Setting currentLobby to:', data.lobby);
       console.log('Lobby updated:', data);
       setCurrentLobby(hydrateLobby(data.lobby));
     });
@@ -88,6 +95,8 @@ export const MultiplayerTest: React.FC = () => {
       console.log('  🔗 Raw edges:', data.gameState.network?.edges);
       console.log('  📊 Raw vertices type:', data.gameState.network?.vertices?.constructor?.name);
       console.log('  📊 Raw edges type:', data.gameState.network?.edges?.constructor?.name);
+      console.log('🎮 GAME-STARTING DEBUG:');
+      console.log('  📋 currentLobby at game start:', currentLobby);
 
       console.log('🔄 HYDRATING game state...');
       const hydratedGameState = hydrateGameState(data.gameState);
@@ -101,11 +110,21 @@ export const MultiplayerTest: React.FC = () => {
       setGameState(hydratedGameState);
       setValidMoves(data.validMoves);
       setGameId(data.gameId);
+
+        // 🔍 PLAYER ID MAPPING DEBUG:
+      console.log('\n🆔 PLAYER ID MAPPING DEBUG:');
+      console.log('  👤 My playerName:', playerName);
+      console.log('  🏠 Current lobby players:', currentLobby?.players);
+      console.log('  🎮 Game state players:', data.gameState.players);
       
       // Find my player ID in the game state
       const myPlayer = data.gameState.players.find(p => 
         currentLobby?.players.some(lp => lp.id === p.id && lp.name === playerName)
       );
+
+      console.log('  🔍 Found myPlayer:', myPlayer);
+      console.log('  🆔 Setting myGamePlayerId to:', myPlayer?.id || null);
+
       setMyGamePlayerId(myPlayer?.id || null);
       
       setCurrentState('in-game');
@@ -273,13 +292,32 @@ export const MultiplayerTest: React.FC = () => {
   };
 
   const getMyPlayer = (): Player | null => {
-    if (!gameState || !myGamePlayerId) return null;
-    return gameState.players.find(p => p?.id === myGamePlayerId) || null;
+    console.log('\n🔍 getMyPlayer() DEBUG:');
+    console.log('  🆔 myGamePlayerId:', myGamePlayerId);
+    console.log('  🎮 gameState exists:', !!gameState);
+    
+    if (!gameState || !myGamePlayerId) {
+      console.log('  ❌ Returning null - missing gameState or myGamePlayerId');
+      return null;
+    }
+
+    const player = gameState.players.find(p => p?.id === myGamePlayerId) || null;
+    console.log('  👤 Found player:', player);
+    return player;
   };
 
   const isMyTurn = (): boolean => {
-    if (!gameState || !myGamePlayerId) return false;
+    console.log('\n🔍 isMyTurn() DEBUG:');
+    console.log('  🆔 myGamePlayerId:', myGamePlayerId);
+    console.log('  🎮 gameState exists:', !!gameState);
+    if (!gameState || !myGamePlayerId) {
+      console.log('  ❌ Returning false - missing gameState or myGamePlayerId');
+      return false;
+    }
     const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+    console.log('  🎯 Current player index:', gameState.currentPlayerIndex);
+    console.log('  👤 Current player:', currentPlayer);
+    console.log('  🤔 Is my turn?', currentPlayer?.id === myGamePlayerId);
     return currentPlayer?.id === myGamePlayerId;
   };
 
