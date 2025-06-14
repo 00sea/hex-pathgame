@@ -47,9 +47,26 @@ export class GameManager {
     console.log(`Creating game ${gameId} from lobby ${lobbyId}`);
     console.log(`Players: ${player1.name} vs ${player2.name}`);
     console.log(`Config: Grid radius ${config.gridRadius}`);
+    console.log(`📋 Config:`, config);
+    console.log(`👥 Players: ${player1.name} vs ${player2.name}`);
     
     // Use shared game logic to create the complete initial game state
     const gameState = VertexGameLogic.createGame(gameId, player1, player2, config);
+
+    // 🔍 CRITICAL DEBUG: Check network creation
+    console.log(`\n🌐 NETWORK VERIFICATION:`);
+    console.log(`  📍 Vertices count: ${gameState.network.vertices.size}`);
+    console.log(`  🔗 Edges count: ${gameState.network.edges.size}`);
+    console.log(`  📐 Grid radius: ${gameState.network.radius}`);
+    console.log(`  📊 Vertices type: ${gameState.network.vertices.constructor.name}`);
+    console.log(`  📊 Edges type: ${gameState.network.edges.constructor.name}`);
+
+    const vertexSample = Array.from(gameState.network.vertices).slice(0, 3);
+    const edgeSample = Array.from(gameState.network.edges.entries()).slice(0, 2);
+    console.log(`  🔍 Sample vertices:`, vertexSample);
+    console.log(`  🔍 Sample edges:`, edgeSample);
+    
+    console.log(`🎮 === END GAME CREATION ===\n`);
     
     // Game starts immediately in 'playing' phase since we have 2 players
     gameState.phase = 'playing';

@@ -6,6 +6,7 @@ import { networkInterfaces } from 'os';
 import { GameManager } from './GameManager';
 import { LobbyManager } from './LobbyManager';
 import { SocketEvents } from '../../shared/types';
+import { dehydrateGameState } from '../../shared/utils/gameStateUtils';
 
 const app = express();
 const server = createServer(app);
@@ -338,7 +339,12 @@ io.on('connection', (socket) => {
     lobbyId: string, 
     transition: { gameId: string; gameState: any; validMoves: any }
   ) {
+    console.log(`🚀 GAME TRANSITION DEBUG:`);
     console.log(`Transitioning lobby ${lobbyId} to game ${transition.gameId}`);
+    console.log(`  📍 Pre-transmission vertices: ${transition.gameState.network.vertices.size}`);
+    console.log(`  🔗 Pre-transmission edges: ${transition.gameState.network.edges.size}`);
+    console.log(`  📊 Pre-transmission vertices type: ${transition.gameState.network.vertices.constructor.name}`);
+    console.log(`  📊 Pre-transmission edges type: ${transition.gameState.network.edges.constructor.name}`);
     
     // Move all players from lobby room to game room
     io.in(lobbyId).socketsJoin(transition.gameId);
@@ -354,13 +360,14 @@ io.on('connection', (socket) => {
     // Notify all players that the game is starting
     io.to(transition.gameId).emit('game-starting', {
       gameId: transition.gameId,
-      gameState: transition.gameState,
+      gameState: dehydrateGameState(transition.gameState),  // ← This one line
       validMoves: transition.validMoves
     });
     
     // Leave the lobby room since it's no longer needed
     io.in(lobbyId).socketsLeave(lobbyId);
     
+    console.log(`📤 EMITTED game-starting event`);
     console.log(`Game transition complete: ${lobbyId} → ${transition.gameId}`);
   }
   
