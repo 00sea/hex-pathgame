@@ -1,5 +1,5 @@
 // client/src/utils/gameStateUtils.ts
-import type { GameState, Edge } from '../../../shared/types';
+import type { GameState, Edge, GameLobby, LobbyInfo } from '../types';
 
 /**
  * Hydrate a game state received from the server
@@ -44,6 +44,49 @@ export function hydrateGameState(rawGameState: any): GameState {
 }
 
 /**
+ * Hydrate a lobby object received from the server
+ * 
+ * When lobby data is sent over the network via JSON, Date objects
+ * are serialized as ISO strings. This function converts them back
+ * to proper Date objects.
+ */
+export function hydrateLobby(rawLobby: any): GameLobby {
+  const lobby = { ...rawLobby };
+
+  // Convert createdAt string back to Date
+  if (typeof lobby.createdAt === 'string') {
+    lobby.createdAt = new Date(lobby.createdAt);
+  }
+
+  return lobby as GameLobby;
+}
+
+/**
+ * Hydrate a lobby info object received from the server
+ * 
+ * Similar to hydrateLobby but for LobbyInfo objects in lobby lists.
+ */
+export function hydrateLobbyInfo(rawLobbyInfo: any): LobbyInfo {
+  const lobbyInfo = { ...rawLobbyInfo };
+
+  // Convert createdAt string back to Date
+  if (typeof lobbyInfo.createdAt === 'string') {
+    lobbyInfo.createdAt = new Date(lobbyInfo.createdAt);
+  }
+
+  return lobbyInfo as LobbyInfo;
+}
+
+/**
+ * Hydrate an array of lobby info objects
+ * 
+ * Convenience function for hydrating lobby lists from the server.
+ */
+export function hydrateLobbiesList(rawLobbies: any[]): LobbyInfo[] {
+  return rawLobbies.map(hydrateLobbyInfo);
+}
+
+/**
  * Dehydrate a game state for sending over the network
  * 
  * Convert Map and Set objects to plain objects/arrays for JSON serialization.
@@ -60,6 +103,24 @@ export function dehydrateGameState(gameState: GameState): any {
   // Convert Map to object
   if (dehydrated.network?.edges instanceof Map) {
     dehydrated.network.edges = Object.fromEntries(dehydrated.network.edges) as any;
+  }
+
+  return dehydrated;
+}
+
+/**
+ * Dehydrate a lobby object for sending over the network
+ * 
+ * Ensures Date objects are properly serialized (though this is usually
+ * handled automatically by JSON.stringify).
+ */
+export function dehydrateLobby(lobby: GameLobby): any {
+  const dehydrated = { ...lobby };
+
+  // Date objects are automatically converted to ISO strings by JSON.stringify
+  // but we can be explicit if needed
+  if (dehydrated.createdAt instanceof Date) {
+    dehydrated.createdAt = dehydrated.createdAt.toISOString() as any;
   }
 
   return dehydrated;

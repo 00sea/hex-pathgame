@@ -4,7 +4,7 @@ import { NetworkConnectionTester } from './NetworkConnectionTester';
 import GamesList from './GamesList';
 import MultiplayerGame from '../MultiplayerGame';
 import type { GameState, Player, Move, ValidMoves, GameLobby, LobbyInfo } from '../../../../shared/types';
-import { hydrateGameState } from '../../utils/gameStateUtils';
+import { hydrateGameState, hydrateLobby, hydrateLobbiesList } from '../../../../shared/utils/gameStateUtils';
 
 interface TestMessage {
   id: string;
@@ -60,7 +60,7 @@ export const MultiplayerTest: React.FC = () => {
     // Lobby created successfully
     socket.on('lobby-created', (data: { lobbyId: string; lobby: GameLobby; playerId: string }) => {
       console.log('Lobby created:', data);
-      setCurrentLobby(data.lobby);
+      setCurrentLobby(hydrateLobby(data.lobby));
       setMyLobbyPlayerId(data.playerId);
       setCurrentState('in-lobby');
     });
@@ -68,7 +68,7 @@ export const MultiplayerTest: React.FC = () => {
     // Successfully joined a lobby
     socket.on('lobby-joined', (data: { lobby: GameLobby; playerId: string }) => {
       console.log('Lobby joined:', data);
-      setCurrentLobby(data.lobby);
+      setCurrentLobby(hydrateLobby(data.lobby));
       setMyLobbyPlayerId(data.playerId);
       setCurrentState('in-lobby');
     });
@@ -76,13 +76,29 @@ export const MultiplayerTest: React.FC = () => {
     // Lobby updated (someone joined/left)
     socket.on('lobby-updated', (data: { lobby: GameLobby }) => {
       console.log('Lobby updated:', data);
-      setCurrentLobby(data.lobby);
+      setCurrentLobby(hydrateLobby(data.lobby));
     });
 
     // Game starting from lobby
     socket.on('game-starting', (data: { gameId: string; gameState: GameState; validMoves: ValidMoves }) => {
+      console.log('🎮 CLIENT: Received game-starting event');
       console.log('Game starting from lobby:', data);
-      setGameState(hydrateGameState(data.gameState));
+      console.log('📦 RAW DATA received:');
+      console.log('  📍 Raw vertices:', data.gameState.network?.vertices);
+      console.log('  🔗 Raw edges:', data.gameState.network?.edges);
+      console.log('  📊 Raw vertices type:', data.gameState.network?.vertices?.constructor?.name);
+      console.log('  📊 Raw edges type:', data.gameState.network?.edges?.constructor?.name);
+
+      console.log('🔄 HYDRATING game state...');
+      const hydratedGameState = hydrateGameState(data.gameState);
+
+      console.log('✨ AFTER HYDRATION:');
+      console.log('  📍 Hydrated vertices count:', hydratedGameState.network?.vertices?.size);
+      console.log('  🔗 Hydrated edges count:', hydratedGameState.network?.edges?.size);
+      console.log('  📊 Hydrated vertices type:', hydratedGameState.network?.vertices?.constructor?.name);
+      console.log('  📊 Hydrated edges type:', hydratedGameState.network?.edges?.constructor?.name);
+
+      setGameState(hydratedGameState);
       setValidMoves(data.validMoves);
       setGameId(data.gameId);
       
@@ -102,7 +118,7 @@ export const MultiplayerTest: React.FC = () => {
     // Available lobbies list
     socket.on('lobbies-list', (data: { lobbies: LobbyInfo[] }) => {
       console.log('Lobbies list received:', data);
-      setAvailableLobbies(data.lobbies || []);
+      setAvailableLobbies(hydrateLobbiesList(data.lobbies || []));
     });
 
     // ======================

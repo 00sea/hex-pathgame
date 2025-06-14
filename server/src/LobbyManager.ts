@@ -59,7 +59,7 @@ export class LobbyManager {
       config,
       createdAt: new Date(),
       phase: 'waiting-for-players',
-      maxPlayers: 3                        // ✅ Configurable limit
+      maxPlayers: 2                        // ✅ Configurable limit
     };
 
     // Set up server-side lobby tracking

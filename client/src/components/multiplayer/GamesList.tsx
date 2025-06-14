@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { type LobbyInfo } from '../../../../shared/types';
+import { hydrateLobbiesList } from '../../../../shared/utils/gameStateUtils';
 
 interface LobbiesListProps {
   socket: any;
@@ -40,7 +41,7 @@ export const LobbiesList: React.FC<LobbiesListProps> = ({
 
     const handleLobbiesList = (data: { lobbies: LobbyInfo[] }) => {
       console.log('Lobbies list received:', data);
-      setLobbies(data.lobbies || []);
+      setLobbies(hydrateLobbiesList(data.lobbies || []));
       setIsLoading(false);
     };
 
