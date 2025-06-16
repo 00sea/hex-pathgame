@@ -59,8 +59,6 @@ export const MultiplayerTest: React.FC = () => {
     
     // Lobby created successfully
     socket.on('lobby-created', (data: { lobbyId: string; lobby: GameLobby; playerId: string }) => {
-      console.log('🏠 LOBBY-CREATED DEBUG (should only happen for Player 1):');
-      console.log('  📋 Setting currentLobby to:', data.lobby);
       console.log('Lobby created:', data);
       setCurrentLobby(hydrateLobby(data.lobby));
       setMyLobbyPlayerId(data.playerId);
@@ -69,8 +67,6 @@ export const MultiplayerTest: React.FC = () => {
 
     // Successfully joined a lobby
     socket.on('lobby-joined', (data: { lobby: GameLobby; playerId: string }) => {
-      console.log('🚪 LOBBY-JOINED DEBUG (should happen for Player 2):');
-      console.log('  📋 Setting currentLobby to:', data.lobby);
       console.log('Lobby joined:', data);
       setCurrentLobby(hydrateLobby(data.lobby));
       setMyLobbyPlayerId(data.playerId);
@@ -79,52 +75,21 @@ export const MultiplayerTest: React.FC = () => {
 
     // Lobby updated (someone joined/left)
     socket.on('lobby-updated', (data: { lobby: GameLobby }) => {
-      console.log('🔄 LOBBY-UPDATED DEBUG:');
-      console.log('  📋 Current currentLobby before update:', currentLobby);
-      console.log('  📋 Setting currentLobby to:', data.lobby);
       console.log('Lobby updated:', data);
       setCurrentLobby(hydrateLobby(data.lobby));
     });
 
     // Game starting from lobby
     socket.on('game-starting', (data: { gameId: string; gameState: GameState; validMoves: ValidMoves }) => {
-      console.log('🎮 CLIENT: Received game-starting event');
       console.log('Game starting from lobby:', data);
-      console.log('📦 RAW DATA received:');
-      console.log('  📍 Raw vertices:', data.gameState.network?.vertices);
-      console.log('  🔗 Raw edges:', data.gameState.network?.edges);
-      console.log('  📊 Raw vertices type:', data.gameState.network?.vertices?.constructor?.name);
-      console.log('  📊 Raw edges type:', data.gameState.network?.edges?.constructor?.name);
-      console.log('🎮 GAME-STARTING DEBUG:');
-      console.log('  📋 currentLobby at game start:', currentLobby);
-
-      console.log('🔄 HYDRATING game state...');
-      const hydratedGameState = hydrateGameState(data.gameState);
-
-      console.log('✨ AFTER HYDRATION:');
-      console.log('  📍 Hydrated vertices count:', hydratedGameState.network?.vertices?.size);
-      console.log('  🔗 Hydrated edges count:', hydratedGameState.network?.edges?.size);
-      console.log('  📊 Hydrated vertices type:', hydratedGameState.network?.vertices?.constructor?.name);
-      console.log('  📊 Hydrated edges type:', hydratedGameState.network?.edges?.constructor?.name);
-
-      setGameState(hydratedGameState);
+      setGameState(hydrateGameState(data.gameState));
       setValidMoves(data.validMoves);
       setGameId(data.gameId);
-
-        // 🔍 PLAYER ID MAPPING DEBUG:
-      console.log('\n🆔 PLAYER ID MAPPING DEBUG:');
-      console.log('  👤 My playerName:', playerName);
-      console.log('  🏠 Current lobby players:', currentLobby?.players);
-      console.log('  🎮 Game state players:', data.gameState.players);
       
       // Find my player ID in the game state
       const myPlayer = data.gameState.players.find(p => 
         currentLobby?.players.some(lp => lp.id === p.id && lp.name === playerName)
       );
-
-      console.log('  🔍 Found myPlayer:', myPlayer);
-      console.log('  🆔 Setting myGamePlayerId to:', myPlayer?.id || null);
-
       setMyGamePlayerId(myPlayer?.id || null);
       
       setCurrentState('in-game');
@@ -270,6 +235,15 @@ export const MultiplayerTest: React.FC = () => {
     }
   };
 
+  const handleStartGame = () => {
+    if (socket && currentLobby) {
+      console.log(`Starting game for lobby: ${currentLobby.id}`);
+      socket.emit('start-game', {
+        lobbyId: currentLobby.id
+      });
+    }
+  };
+
   const handleMakeMove = (move: Move) => {
     if (socket && gameId) {
       console.log('Making move:', move);
@@ -292,32 +266,13 @@ export const MultiplayerTest: React.FC = () => {
   };
 
   const getMyPlayer = (): Player | null => {
-    console.log('\n🔍 getMyPlayer() DEBUG:');
-    console.log('  🆔 myGamePlayerId:', myGamePlayerId);
-    console.log('  🎮 gameState exists:', !!gameState);
-    
-    if (!gameState || !myGamePlayerId) {
-      console.log('  ❌ Returning null - missing gameState or myGamePlayerId');
-      return null;
-    }
-
-    const player = gameState.players.find(p => p?.id === myGamePlayerId) || null;
-    console.log('  👤 Found player:', player);
-    return player;
+    if (!gameState || !myGamePlayerId) return null;
+    return gameState.players.find(p => p?.id === myGamePlayerId) || null;
   };
 
   const isMyTurn = (): boolean => {
-    console.log('\n🔍 isMyTurn() DEBUG:');
-    console.log('  🆔 myGamePlayerId:', myGamePlayerId);
-    console.log('  🎮 gameState exists:', !!gameState);
-    if (!gameState || !myGamePlayerId) {
-      console.log('  ❌ Returning false - missing gameState or myGamePlayerId');
-      return false;
-    }
+    if (!gameState || !myGamePlayerId) return false;
     const currentPlayer = gameState.players[gameState.currentPlayerIndex];
-    console.log('  🎯 Current player index:', gameState.currentPlayerIndex);
-    console.log('  👤 Current player:', currentPlayer);
-    console.log('  🤔 Is my turn?', currentPlayer?.id === myGamePlayerId);
     return currentPlayer?.id === myGamePlayerId;
   };
 
@@ -414,7 +369,7 @@ export const MultiplayerTest: React.FC = () => {
               </div>
             </div>
 
-            {/* Waiting Message */}
+            {/* Waiting/Ready Messages */}
             {currentLobby.players.length < currentLobby.maxPlayers && (
               <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg mb-4 text-center">
                 <strong>Waiting for {currentLobby.maxPlayers - currentLobby.players.length} more player(s) to join...</strong>
@@ -422,15 +377,27 @@ export const MultiplayerTest: React.FC = () => {
               </div>
             )}
 
-            {/* Ready Message */}
+            {/* Ready to Start */}
             {currentLobby.players.length === currentLobby.maxPlayers && (
               <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg mb-4 text-center">
-                <strong>🎮 All players ready! Game starting...</strong>
+                <strong>🎮 All players ready!</strong>
+                <div className="text-sm mt-1">Click "Start Game" when everyone is ready to begin</div>
               </div>
             )}
 
-            {/* Leave Lobby Button */}
-            <div className="flex justify-center">
+            {/* Action Buttons */}
+            <div className="flex justify-center gap-4">
+              {/* Start Game Button - Only show when lobby is full */}
+              {currentLobby.players.length === currentLobby.maxPlayers && (
+                <button
+                  onClick={handleStartGame}
+                  className="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 font-bold text-lg"
+                >
+                  🚀 Start Game!
+                </button>
+              )}
+              
+              {/* Leave Lobby Button */}
               <button
                 onClick={handleLeaveLobby}
                 className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"

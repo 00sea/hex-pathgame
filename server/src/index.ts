@@ -156,10 +156,10 @@ io.on('connection', (socket) => {
       
       console.log(`${data.playerName} joined lobby: ${data.lobbyId} with playerId: ${result.playerId}`);
       
-      // If game transition occurred (lobby full), handle it
-      if (result.gameTransition) {
-        handleGameTransition(data.lobbyId, result.gameTransition);
-      }
+      // ✅ REMOVED: Auto-start logic - players now manually start
+      // if (result.gameTransition) {
+      //   handleGameTransition(data.lobbyId, result.gameTransition);
+      // }
       
     } catch (error) {
       console.error('Error joining lobby:', error);
@@ -193,6 +193,24 @@ io.on('connection', (socket) => {
     } catch (error) {
       console.error('Error listing lobbies:', error);
       socket.emit('error', { message: 'Failed to get lobby list' });
+    }
+  });
+  
+  // ✅ NEW: Manual game start
+  socket.on('start-game', (data: SocketEvents['start-game']) => {
+    try {
+      console.log(`🎮 Manual game start requested for lobby: ${data.lobbyId}`);
+      
+      const gameTransition = lobbyManager.startGame(data.lobbyId);
+      
+      if (gameTransition) {
+        handleGameTransition(data.lobbyId, gameTransition);
+        console.log(`🚀 Game started manually: ${gameTransition.gameId}`);
+      }
+      
+    } catch (error) {
+      console.error('Error starting game:', error);
+      socket.emit('error', { message: error instanceof Error ? error.message : 'Failed to start game' });
     }
   });
   
@@ -339,12 +357,7 @@ io.on('connection', (socket) => {
     lobbyId: string, 
     transition: { gameId: string; gameState: any; validMoves: any }
   ) {
-    console.log(`🚀 GAME TRANSITION DEBUG:`);
     console.log(`Transitioning lobby ${lobbyId} to game ${transition.gameId}`);
-    console.log(`  📍 Pre-transmission vertices: ${transition.gameState.network.vertices.size}`);
-    console.log(`  🔗 Pre-transmission edges: ${transition.gameState.network.edges.size}`);
-    console.log(`  📊 Pre-transmission vertices type: ${transition.gameState.network.vertices.constructor.name}`);
-    console.log(`  📊 Pre-transmission edges type: ${transition.gameState.network.edges.constructor.name}`);
     
     // Move all players from lobby room to game room
     io.in(lobbyId).socketsJoin(transition.gameId);
@@ -360,14 +373,13 @@ io.on('connection', (socket) => {
     // Notify all players that the game is starting
     io.to(transition.gameId).emit('game-starting', {
       gameId: transition.gameId,
-      gameState: dehydrateGameState(transition.gameState),  // ← This one line
+      gameState: dehydrateGameState(transition.gameState),
       validMoves: transition.validMoves
     });
     
     // Leave the lobby room since it's no longer needed
     io.in(lobbyId).socketsLeave(lobbyId);
     
-    console.log(`📤 EMITTED game-starting event`);
     console.log(`Game transition complete: ${lobbyId} → ${transition.gameId}`);
   }
   
