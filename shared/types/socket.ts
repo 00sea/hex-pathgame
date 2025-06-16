@@ -11,6 +11,7 @@ export interface SocketEvents {
   'join-lobby': { lobbyId: string; playerName: string };
   'leave-lobby': { lobbyId: string };
   'list-lobbies': void;
+  'start-game': { lobbyId: string };  // ✅ NEW: Manual game start
   
   // Server to client events  
   'lobby-created': { lobbyId: string; lobby: GameLobby; playerId: string };

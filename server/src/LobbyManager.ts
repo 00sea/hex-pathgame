@@ -78,13 +78,13 @@ export class LobbyManager {
   /**
    * Add a second player to an existing lobby
    * 
-   * When the second player joins, we automatically transition to starting the game.
+   * Players can now manually start the game when ready.
    */
   joinLobby(
     lobbyId: string,
     playerName: string,
     socketId: string
-  ): { lobby: GameLobby; playerId: string; gameTransition?: { gameId: string; gameState: GameState; validMoves: ValidMoves } } {
+  ): { lobby: GameLobby; playerId: string } {
     const lobbyRoom = this.lobbies.get(lobbyId);
 
     if (!lobbyRoom) {
@@ -114,16 +114,14 @@ export class LobbyManager {
 
     console.log(`${playerName} joined lobby: ${lobbyId} (${updatedLobby.players.length}/${updatedLobby.maxPlayers})`);
 
-    // Automatically start the game when we reach maxPlayers
-    let gameTransition;
-    if (updatedLobby.players.length === updatedLobby.maxPlayers) {
-      gameTransition = this.startGame(lobbyId);
-    }
+    // ✅ REMOVED: Auto-start logic - now players manually start the game
+    // if (updatedLobby.players.length === updatedLobby.maxPlayers) {
+    //   gameTransition = this.startGame(lobbyId);
+    // }
 
     return {
       lobby: updatedLobby,
-      playerId,
-      gameTransition
+      playerId
     };
   }
 
@@ -131,8 +129,9 @@ export class LobbyManager {
    * Transition a complete lobby to an actual game
    * 
    * This is where we finally create the GameState with triangular lattice.
+   * Now called manually when players click "Start Game".
    */
-  private startGame(lobbyId: string): { gameId: string; gameState: GameState; validMoves: ValidMoves } {
+  startGame(lobbyId: string): { gameId: string; gameState: GameState; validMoves: ValidMoves } {
     const lobbyRoom = this.lobbies.get(lobbyId);
 
     if (!lobbyRoom) {
