@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   type GameState, 
   type TriangularCoordinate, 
@@ -9,6 +9,8 @@ import {
 import InputHandler from './core/InputHandler';
 import UIControls from './core/UIControls';
 import CanvasRendering from './core/CanvasRendering';
+import { GAME_DISPLAY_CONFIG } from '../../../shared/config/gameConfig';
+import { GreedyBot } from '../ai';
 
 /**
  * Create a clean initial game state for local play
@@ -53,9 +55,14 @@ const LocalGame: React.FC = () => {
   const [highlightMoves, setHighlightMoves] = useState(true);
   const [showCoordinates, setShowCoordinates] = useState(false);
 
+  // Bot state management (temporary for testing)
+  const [botEnabled, setBotEnabled] = useState(true);
+  const [botPlayer, setBotPlayer] = useState<'player1' | 'player2'>('player2');
+  const [greedyBot] = useState(() => new GreedyBot({ verbose: true }));
+
   // Rendering configuration
-  const canvasSize = { width: 800, height: 600 };
-  const scale = 30;
+  const canvasSize = GAME_DISPLAY_CONFIG.canvas;
+  const scale = GAME_DISPLAY_CONFIG.scale;
 
   /**
    * Get valid moves for the current player
@@ -157,11 +164,33 @@ const LocalGame: React.FC = () => {
 
   const validMoves = getValidMoves();
 
+  // Bot turn handling (temporary for testing)
+  useEffect(() => {
+    if (botEnabled && gameState.phase === 'playing') {
+      const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+      const isBot = (botPlayer === 'player1' && gameState.currentPlayerIndex === 0) ||
+                    (botPlayer === 'player2' && gameState.currentPlayerIndex === 1);
+      
+      if (isBot) {
+        // Bot's turn - execute move through existing handlers
+        greedyBot.getBestMove(gameState, currentPlayer)
+          .then(move => {
+            if (move.type === 'move' && move.to) {
+              handleVertexClick(move.to);
+            }
+          })
+          .catch(error => {
+            console.error('Bot move failed:', error);
+          });
+      }
+    }
+  }, [gameState.currentPlayerIndex, gameState.phase, botEnabled, botPlayer]);
+
   return (
     <div className="local-game p-6 bg-gray-50 min-h-screen">
       <div className="max-w-6xl mx-auto">
         <h2 className="text-3xl font-bold text-center mb-6 text-gray-800">
-          Local Vertex Strategy Game
+          Local Vertex Strategy Game {botEnabled ? '(vs Bot)' : ''}
         </h2>
         
         {/* Game Controls */}
@@ -178,6 +207,11 @@ const LocalGame: React.FC = () => {
           onGridRadiusChange={handleGridSizeChange}
           onResetGame={handleResetGame}
           isMultiplayer={false}
+          // Bot controls (temporary)
+          botEnabled={botEnabled}
+          onBotEnabledChange={setBotEnabled}
+          botPlayer={botPlayer}
+          onBotPlayerChange={setBotPlayer}
         />
 
         {/* Game Board */}

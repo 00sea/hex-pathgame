@@ -10,6 +10,7 @@ import {
 import InputHandler from '../core/InputHandler';
 import UIControls from '../core/UIControls';
 import CanvasRendering from '../core/CanvasRendering';
+import { GAME_DISPLAY_CONFIG } from '../../../../shared/config/gameConfig';
 
 /**
  * Create a sample vertex-based game state for demonstration
@@ -62,8 +63,8 @@ const VertexGridDemo: React.FC = () => {
   const [showCoordinates, setShowCoordinates] = useState(false);
 
   // Canvas configuration
-  const canvasSize = { width: 800, height: 600 };
-  const scale = 30;
+  const canvasSize = GAME_DISPLAY_CONFIG.canvas;
+  const scale = GAME_DISPLAY_CONFIG.scale;      
 
   /**
    * Get valid moves for the current player using shared game logic
