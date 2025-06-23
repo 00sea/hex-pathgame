@@ -12,5 +12,4 @@ export { GreedyBot } from './bots/greedy';
 // Export utilities
 export * from './utils/botUtils';
 
-// Temporary placeholders
-export { MCTS_BOT_PLACEHOLDER } from './bots/mcts';
+export { MCTSBot } from './bots/mcts';
