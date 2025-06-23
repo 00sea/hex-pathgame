@@ -10,7 +10,7 @@ import InputHandler from './core/InputHandler';
 import UIControls from './core/UIControls';
 import CanvasRendering from './core/CanvasRendering';
 import { GAME_DISPLAY_CONFIG } from '../../../shared/config/gameConfig';
-import { GreedyBot } from '../ai';
+import { GreedyBot, MCTSBot , BotDifficulty } from '../ai';
 
 /**
  * Create a clean initial game state for local play
@@ -58,7 +58,12 @@ const LocalGame: React.FC = () => {
   // Bot state management (temporary for testing)
   const [botEnabled, setBotEnabled] = useState(true);
   const [botPlayer, setBotPlayer] = useState<'player1' | 'player2'>('player2');
-  const [greedyBot] = useState(() => new GreedyBot({ verbose: true }));
+  // const [greedyBot] = useState(() => new GreedyBot({ verbose: true }));
+
+  const [mctsBot] = useState(() => new MCTSBot({ 
+    difficulty: BotDifficulty.HARD,  // Start with EASY for testing
+    verbose: true 
+  }));
 
   // Rendering configuration
   const canvasSize = GAME_DISPLAY_CONFIG.canvas;
@@ -173,15 +178,21 @@ const LocalGame: React.FC = () => {
       
       if (isBot) {
         // Bot's turn - execute move through existing handlers
-        greedyBot.getBestMove(gameState, currentPlayer)
+        // greedyBot.getBestMove(gameState, currentPlayer)
+        //   .then(move => {
+        //     if (move.type === 'move' && move.to) {
+        //       handleVertexClick(move.to);
+        //     }
+        //   })
+        //   .catch(error => {
+        //     console.error('Bot move failed:', error);
+        //   });
+        mctsBot.getBestMove(gameState, currentPlayer)
           .then(move => {
             if (move.type === 'move' && move.to) {
               handleVertexClick(move.to);
             }
           })
-          .catch(error => {
-            console.error('Bot move failed:', error);
-          });
       }
     }
   }, [gameState.currentPlayerIndex, gameState.phase, botEnabled, botPlayer]);

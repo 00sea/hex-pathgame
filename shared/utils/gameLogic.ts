@@ -91,10 +91,10 @@ export class VertexGameLogic {
    */
   static isValidMove(gameState: GameState, move: Move): boolean {
 
-    console.log(`\n🎮 STEP 3D - GAME LOGIC VALIDATION:`);
-    console.log(`  📊 gameState.network.edges type in game logic: ${gameState.network.edges.constructor.name}`);
-    console.log(`  🔍 edges.get method exists: ${typeof gameState.network.edges.get}`);
-    console.log(`  🔍 edges object keys sample:`, Object.keys(gameState.network.edges).slice(0, 3));
+    // console.log(`\n🎮 STEP 3D - GAME LOGIC VALIDATION:`);
+    // console.log(`  📊 gameState.network.edges type in game logic: ${gameState.network.edges.constructor.name}`);
+    // console.log(`  🔍 edges.get method exists: ${typeof gameState.network.edges.get}`);
+    // console.log(`  🔍 edges object keys sample:`, Object.keys(gameState.network.edges).slice(0, 3));
     // Basic validation: correct player and game phase
     if (gameState.phase !== 'playing') {
       return false;
@@ -142,15 +142,15 @@ export class VertexGameLogic {
       }
     }
 
-    console.log(`\n🔍 STEP 3E - EDGE LOOKUP DEBUG:`);
-    console.log(`  🎯 Looking for edge from (${player.position.u},${player.position.v}) to (${move.to.u},${move.to.v})`);
+    // console.log(`\n🔍 STEP 3E - EDGE LOOKUP DEBUG:`);
+    // console.log(`  🎯 Looking for edge from (${player.position.u},${player.position.v}) to (${move.to.u},${move.to.v})`);
 
     // Check if the edge exists and is available for traversal
     const edgeKey = TriangularLattice.getEdgeKey(player.position, move.to);
 
-    console.log(`  🔑 Edge key: "${edgeKey}"`);
-    console.log(`  📊 About to call gameState.network.edges.get() on type: ${gameState.network.edges.constructor.name}`);
-    console.log(`  🔍 edges.get function: ${typeof gameState.network.edges.get}`);
+    // console.log(`  🔑 Edge key: "${edgeKey}"`);
+    // console.log(`  📊 About to call gameState.network.edges.get() on type: ${gameState.network.edges.constructor.name}`);
+    // console.log(`  🔍 edges.get function: ${typeof gameState.network.edges.get}`);
     
     const edge = gameState.network.edges.get(edgeKey);
     

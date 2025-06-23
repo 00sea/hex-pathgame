@@ -7,5 +7,4 @@
 // export { MCTSNode } from './MCTSNode';
 // export { MCTSEngine } from './MCTSEngine';
 
-// Placeholder for now - will be uncommented when files are created
-export const MCTS_BOT_PLACEHOLDER = 'MCTS bot implementation coming soon';
+export { MCTSBot } from './MCTSBot';
