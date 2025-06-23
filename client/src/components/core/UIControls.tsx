@@ -20,6 +20,11 @@ interface UIControlsProps {
   showStatistics?: boolean;
   // For multiplayer, we might want different control sets
   isMultiplayer?: boolean;
+  // Bot controls (temporary)
+  botEnabled?: boolean;
+  onBotEnabledChange?: (enabled: boolean) => void;
+  botPlayer?: 'player1' | 'player2';
+  onBotPlayerChange?: (player: 'player1' | 'player2') => void;
 }
 
 /**
@@ -50,7 +55,12 @@ export const UIControls: React.FC<UIControlsProps> = ({
   showControls = true,
   showInstructions = true,
   showStatistics = true,
-  isMultiplayer = false
+  isMultiplayer = false,
+  // Bot controls
+  botEnabled = false,
+  onBotEnabledChange,
+  botPlayer = 'player2',
+  onBotPlayerChange
 }) => {
   
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
@@ -148,6 +158,38 @@ export const UIControls: React.FC<UIControlsProps> = ({
                     Show Coordinates
                   </label>
                 </div>
+              )}
+
+              {/* Bot Controls (temporary for testing) */}
+              {!isMultiplayer && onBotEnabledChange && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="checkbox" 
+                      id="enable-bot"
+                      checked={botEnabled}
+                      onChange={(e) => onBotEnabledChange(e.target.checked)}
+                      className="rounded"
+                    />
+                    <label htmlFor="enable-bot" className="text-sm font-medium">
+                      Enable Bot
+                    </label>
+                  </div>
+                  
+                  {botEnabled && onBotPlayerChange && (
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm font-medium">Bot plays as:</label>
+                      <select
+                        value={botPlayer}
+                        onChange={(e) => onBotPlayerChange(e.target.value as 'player1' | 'player2')}
+                        className="px-2 py-1 border border-gray-300 rounded text-sm"
+                      >
+                        <option value="player1">Player 1</option>
+                        <option value="player2">Player 2</option>
+                      </select>
+                    </div>
+                  )}
+                </>
               )}
               
               {/* Reset Button (only for local games) */}

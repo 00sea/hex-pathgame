@@ -306,6 +306,8 @@ export const MultiplayerTest: React.FC = () => {
         isMyTurn={isMyTurn()}
         onMove={handleMakeMove}
         onLeaveGame={handleLeaveGame}
+        canvasSize={{ width: 1000, height: 800 }}  // ✅ Bigger canvas
+        scale={40}                                   // ✅ Bigger scale
         connectionStatus={{
           connected: isConnected,
           reconnecting: isConnecting,
@@ -321,7 +323,7 @@ export const MultiplayerTest: React.FC = () => {
     
     return (
       <div className="p-4">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-5xl mx-auto">  {/* ✅ Increased from max-w-4xl */}
           <header className="text-center mb-8">
             <h2 className="text-3xl font-bold text-gray-800 mb-2">
               🏠 Game Lobby
@@ -414,7 +416,7 @@ export const MultiplayerTest: React.FC = () => {
   // Otherwise, show the main lobby browser
   return (
     <div className="p-4">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-5xl mx-auto">  {/* ✅ Increased from max-w-4xl */}
         <header className="text-center mb-8">
           <h2 className="text-3xl font-bold text-gray-800 mb-2">
             🧪 Multiplayer Lobby System

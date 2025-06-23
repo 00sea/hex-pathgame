@@ -87,6 +87,7 @@ export class VertexGameLogic {
    * - Adjacency requirements for movement
    * - Edge existence and availability
    * - Boundary constraints
+   * - Vertex occupancy
    */
   static isValidMove(gameState: GameState, move: Move): boolean {
 
@@ -130,6 +131,15 @@ export class VertexGameLogic {
     const distance = TriangularLattice.distance(player.position, move.to);
     if (distance !== 1) {
       return false;
+    }
+
+    // Check if destination is already occupied by another player
+    for (const otherPlayer of gameState.players) {
+      if (otherPlayer.id !== player.id) {
+        if (otherPlayer.position.u === move.to.u && otherPlayer.position.v === move.to.v) {
+          return false; // Vertex is occupied by another player
+        }
+      }
     }
 
     console.log(`\n🔍 STEP 3E - EDGE LOOKUP DEBUG:`);
@@ -280,6 +290,21 @@ export class VertexGameLogic {
       // Check if neighbor is within board boundaries
       if (!TriangularLattice.isInRadius(neighbor, gameState.network.radius)) {
         continue;
+      }
+
+      // Check if destination is already occupied by another player
+      let isOccupied = false;
+      for (const otherPlayer of gameState.players) {
+        if (otherPlayer.id !== player.id) {
+          if (otherPlayer.position.u === neighbor.u && otherPlayer.position.v === neighbor.v) {
+            isOccupied = true;
+            break;
+          }
+        }
+      }
+      
+      if (isOccupied) {
+        continue; // Skip this move if vertex is occupied
       }
 
       // Check if edge to neighbor exists and is traversable
