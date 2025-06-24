@@ -61,8 +61,8 @@ const LocalGame: React.FC = () => {
   // const [greedyBot] = useState(() => new GreedyBot({ verbose: true }));
 
   const [mctsBot] = useState(() => new MCTSBot({ 
-    difficulty: BotDifficulty.HARD,  // Start with EASY for testing
-    verbose: true 
+    difficulty: BotDifficulty.MEDIUM,  // Start with EASY for testing
+    verbose: false 
   }));
 
   // Rendering configuration

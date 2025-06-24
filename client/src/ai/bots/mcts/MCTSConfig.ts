@@ -49,7 +49,7 @@ export class MCTSConfigPresets {
   static easy(): MCTSConfig {
     return {
       maxSimulations: 100,
-      explorationConstant: 1.4,
+      explorationConstant: 0.8,
       maxThinkingTimeMs: 1000,       // 1 second
       maxTreeDepth: 15,
       simulationPolicy: 'random',

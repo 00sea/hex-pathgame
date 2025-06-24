@@ -1,16 +1,12 @@
 // client/src/ai/bots/mcts/MCTSNode.ts
-// Tree node structure for Monte Carlo Tree Search
+// Tree node structure for Monte Carlo Tree Search - RESTORED TO WORKING STATE
 
 import type { GameState, Move, Player } from '../../../../../shared/types';
 
 /**
  * Represents a single node in the MCTS tree
  * 
- * Each node corresponds to a game state and tracks:
- * - Visit count and win statistics for UCB1 selection
- * - Parent-child relationships for tree traversal
- * - The move that led to this state
- * - Whether the node has been fully expanded
+ * RESTORED: Back to standard MCTS behavior that actually works
  */
 export class MCTSNode {
   // Tree structure
@@ -48,10 +44,7 @@ export class MCTSNode {
 
   /**
    * Calculate UCB1 (Upper Confidence Bound) value for this node
-   * Used during selection phase to balance exploration vs exploitation
-   * 
-   * @param explorationConstant - Controls exploration vs exploitation balance (typically sqrt(2))
-   * @returns UCB1 value for node selection
+   * STANDARD MCTS implementation
    */
   getUCB1Value(explorationConstant: number = Math.sqrt(2)): number {
     if (this.visits === 0) {
@@ -70,10 +63,8 @@ export class MCTSNode {
 
   /**
    * Select the best child node based on UCB1 values
-   * Used during the selection phase of MCTS
-   * 
-   * @param explorationConstant - UCB1 exploration parameter
-   * @returns Child node with highest UCB1 value
+   * FIXED: In two-player MCTS, children store opponent win rates,
+   * so we need to INVERT the exploitation term to prefer low opponent win rates
    */
   selectBestChild(explorationConstant: number = Math.sqrt(2)): MCTSNode {
     if (this.children.length === 0) {
@@ -81,11 +72,11 @@ export class MCTSNode {
     }
     
     let bestChild = this.children[0];
-    let bestValue = bestChild.getUCB1Value(explorationConstant);
+    let bestValue = this.getInvertedUCB1Value(bestChild, explorationConstant);
     
     for (let i = 1; i < this.children.length; i++) {
       const child = this.children[i];
-      const value = child.getUCB1Value(explorationConstant);
+      const value = this.getInvertedUCB1Value(child, explorationConstant);
       
       if (value > bestValue) {
         bestChild = child;
@@ -97,12 +88,23 @@ export class MCTSNode {
   }
 
   /**
+   * Calculate UCB1 with inverted exploitation term for two-player games
+   * Since children store opponent win rates, we want to prefer LOW win rates
+   */
+  private getInvertedUCB1Value(child: MCTSNode, explorationConstant: number): number {
+    if (child.visits === 0) {
+      return Infinity; // Unvisited nodes have highest priority
+    }
+    
+    // INVERTED exploitation: prefer children with LOW win rates (bad for opponent)
+    const exploitation = 1 - (child.wins / child.visits);
+    const exploration = explorationConstant * Math.sqrt(Math.log(this.visits) / child.visits);
+    
+    return exploitation + exploration;
+  }
+
+  /**
    * Add a child node for a specific move
-   * Used during the expansion phase
-   * 
-   * @param childGameState - Game state after applying the move
-   * @param move - The move that leads to the child state
-   * @returns The newly created child node
    */
   addChild(childGameState: GameState, move: Move): MCTSNode {
     const child = new MCTSNode(childGameState, move, this);
@@ -111,25 +113,20 @@ export class MCTSNode {
 
   /**
    * Update this node's statistics based on simulation result
-   * Used during backpropagation phase
-   * 
-   * @param result - Simulation result (1 = win, 0 = loss, 0.5 = draw)
+   * STANDARD MCTS backpropagation with automatic result flipping
    */
   backpropagate(result: number): void {
     this.visits += 1;
     this.wins += result;
     
-    // Recursively update parent nodes
+    // Recursively update parent nodes with flipped result (opponent's perspective)
     if (this.parent) {
-      // Flip the result for the parent (opponent's perspective)
       this.parent.backpropagate(1 - result);
     }
   }
 
   /**
    * Check if this node represents a terminal game state
-   * 
-   * @returns True if the game is finished at this node
    */
   isTerminal(): boolean {
     return this.gameState.phase === 'finished';
@@ -137,8 +134,6 @@ export class MCTSNode {
 
   /**
    * Check if this node can be expanded (has untried moves)
-   * 
-   * @returns True if there are moves that haven't been tried yet
    */
   canExpand(): boolean {
     return !this.isFullyExpanded && !this.isTerminal();
@@ -146,9 +141,6 @@ export class MCTSNode {
 
   /**
    * Get the most visited child node
-   * Used to select the best move after MCTS completes
-   * 
-   * @returns Child node with the most visits
    */
   getMostVisitedChild(): MCTSNode {
     if (this.children.length === 0) {
@@ -171,9 +163,6 @@ export class MCTSNode {
 
   /**
    * Get the child with the highest win rate
-   * Alternative selection criterion for final move choice
-   * 
-   * @returns Child node with the highest win rate
    */
   getBestWinRateChild(): MCTSNode {
     if (this.children.length === 0) {
@@ -197,10 +186,14 @@ export class MCTSNode {
   }
 
   /**
+   * Get the win rate for this node
+   */
+  getWinRate(): number {
+    return this.visits > 0 ? this.wins / this.visits : 0;
+  }
+
+  /**
    * Get debug information about this node
-   * Useful for logging and debugging MCTS behavior
-   * 
-   * @returns Human-readable node information
    */
   getDebugInfo(): string {
     const winRate = this.visits > 0 ? (this.wins / this.visits * 100).toFixed(1) : '0.0';
